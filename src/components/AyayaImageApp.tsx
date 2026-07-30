@@ -631,7 +631,7 @@ export default function AyayaImageApp() {
   return (
     <div className="app-shell" data-testid="ayayaimage-app">
       <main>
-        <section className="import-section" aria-labelledby="import-heading">
+        <section className="import-section" aria-label="图片导入">
           <div className="hero">
             <a className="content-brand" href="./" aria-label="AyayaImage 首页">
               <img
@@ -643,7 +643,6 @@ export default function AyayaImageApp() {
               />
               <span>AyayaImage</span>
             </a>
-            <h1 id="import-heading">图片处理，保持简单。</h1>
             <p>
               调整尺寸、转换格式、压缩和批量命名。所有处理都在当前设备完成。
             </p>

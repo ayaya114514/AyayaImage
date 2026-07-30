@@ -99,15 +99,15 @@ section {
 }
 
 .hero {
-  max-width: 700px;
-  margin-bottom: 28px;
+  max-width: 520px;
+  margin-bottom: 24px;
 }
 
 .content-brand {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 28px;
+  margin-bottom: 16px;
   color: var(--muted);
   font-size: 14px;
   font-weight: 600;
@@ -136,13 +136,11 @@ section {
   margin-bottom: 22px;
 }
 
-h1,
 h2,
 p {
   margin-top: 0;
 }
 
-h1,
 h2 {
   margin-bottom: 0;
   font-weight: 590;
@@ -150,32 +148,31 @@ h2 {
   line-height: 1.12;
 }
 
-h1 {
-  max-width: 680px;
-  font-size: clamp(36px, 5vw, 48px);
-}
-
 h2 {
   font-size: clamp(20px, 2.4vw, 26px);
 }
 
 .hero > p {
-  max-width: 650px;
-  margin: 14px 0 0;
+  max-width: 520px;
+  margin: 0;
   color: var(--muted);
   font-size: 14px;
   line-height: 1.7;
 }
 
 .drop-zone {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  min-height: 96px;
-  padding: 22px 24px;
+  justify-content: center;
+  gap: 16px;
+  width: min(100%, 340px);
+  aspect-ratio: 1 / 0.92;
+  padding: 32px;
   border: 1px solid var(--line-strong);
   border-radius: var(--radius);
   background: transparent;
+  text-align: center;
   cursor: pointer;
   transition:
     border-color 150ms ease,
@@ -194,7 +191,8 @@ h2 {
 }
 
 .drop-zone > svg {
-  margin-right: 18px;
+  width: 28px;
+  height: 28px;
   color: var(--muted);
 }
 
@@ -208,14 +206,16 @@ h2 {
 }
 
 .drop-zone strong {
-  margin-bottom: 3px;
+  margin-bottom: 6px;
   font-size: 14px;
   font-weight: 570;
 }
 
 .drop-zone div span {
+  max-width: 240px;
   color: var(--muted);
   font-size: 12px;
+  line-height: 1.6;
 }
 
 .drop-action {
@@ -1245,10 +1245,6 @@ input[type="range"]::-moz-range-thumb {
     padding-bottom: 32px;
   }
 
-  .content-brand {
-    margin-bottom: 24px;
-  }
-
   .section-heading,
   .section-heading.compact {
     display: grid;
@@ -1256,26 +1252,19 @@ input[type="range"]::-moz-range-thumb {
     margin-bottom: 24px;
   }
 
-  h1 {
-    font-size: 34px;
-  }
-
   h2 {
     font-size: 22px;
   }
 
   .drop-zone {
-    grid-template-columns: auto 1fr;
-    min-height: 92px;
-    padding: 18px;
+    width: 100%;
+    max-width: 340px;
+    min-height: 0;
+    padding: 26px 22px;
   }
 
   .drop-zone > svg {
-    margin-right: 13px;
-  }
-
-  .drop-action {
-    display: none !important;
+    margin: 0;
   }
 
   .queue-item {

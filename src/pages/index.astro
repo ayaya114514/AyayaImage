@@ -3,7 +3,7 @@ import AyayaImageApp from '../components/AyayaImageApp';
 
 const base = import.meta.env.BASE_URL;
 const canonical = Astro.site ? new URL(base, Astro.site) : Astro.url;
-const ogImage = new URL(`${base}og-v2.png`, Astro.site ?? Astro.url);
+const ogImage = new URL(`${base}og-v3.png`, Astro.site ?? Astro.url);
 const isProduction = import.meta.env.PROD;
 const title = 'AyayaImage — 本地批量图片预处理';
 const description =
