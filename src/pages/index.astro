@@ -3,11 +3,11 @@ import AyayaImageApp from '../components/AyayaImageApp';
 
 const base = import.meta.env.BASE_URL;
 const canonical = Astro.site ? new URL(base, Astro.site) : Astro.url;
-const ogImage = new URL(`${base}og.png`, Astro.site ?? Astro.url);
+const ogImage = new URL(`${base}og-v2.png`, Astro.site ?? Astro.url);
 const isProduction = import.meta.env.PROD;
 const title = 'AyayaImage — 本地批量图片预处理';
 const description =
-  '面向博客、GitHub README 和社交媒体的本地图片预处理工具。批量调整尺寸、转换格式、压缩、重命名并生成博客资源包，图片不会离开浏览器。';
+  '面向博客、GitHub README 和社交媒体的本地图片预处理工具。批量调整尺寸、转换格式、压缩与重命名，图片不会离开浏览器。';
 ---
 
 <!doctype html>
@@ -15,7 +15,7 @@ const description =
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="theme-color" content="#0a0a0b" />
     <meta name="color-scheme" content="dark" />
     <meta name="description" content={description} />
     <meta name="robots" content="index, follow" />
@@ -61,30 +61,30 @@ const description =
 <style is:global>
   :root {
     color-scheme: dark;
-    background: #0a0a0a;
+    background: #0a0a0b;
   }
 
   html {
     min-width: 320px;
     min-height: 100%;
-    background: #0a0a0a;
+    background: #0a0a0b;
   }
 
   body {
     min-height: 100vh;
     margin: 0;
-    background: #0a0a0a;
+    background: #0a0a0b;
   }
 
   .noscript {
     width: min(560px, calc(100% - 40px));
     margin: 20vh auto 0;
-    color: #f5f5f5;
+    color: #f4f4f5;
     font: 15px/1.6 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
       "Segoe UI", sans-serif;
   }
 
   .noscript p {
-    color: #9c9c9c;
+    color: #a1a1aa;
   }
 </style>

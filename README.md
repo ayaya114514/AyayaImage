@@ -13,7 +13,6 @@ AyayaImage 不是又一个“上传图片后等待服务器压缩”的网站。
 - Before / After 滑动比较与尺寸、体积、节省比例统计
 - 统一大小写、连接符、prefix / suffix、连续编号和尺寸后缀
 - 单张下载或将批量结果打包为 ZIP
-- 一次生成多尺寸博客资源包和可复制的 Markdown / `<picture>` 代码
 - 保存自定义 preset；安装为 PWA 后可在已缓存的设备上离线使用
 - 检查常见 EXIF 信息，并在重新编码后复核输出 metadata
 
@@ -31,41 +30,6 @@ AyayaImage 不是又一个“上传图片后等待服务器压缩”的网站。
 | Original | 不缩放 | 仅转换格式或压缩 |
 
 默认禁止放大小图，避免把低分辨率图片无意义地插值成更大的文件。每个 preset 都可以继续调整，也可以保存为自己的 preset。
-
-## 博客资源包
-
-对一张原图生成多种 Web 尺寸，并同时得到可复制代码：
-
-```text
-desk-setup/
-├── desk-setup-original.jpg
-├── desk-setup-1600.webp
-├── desk-setup-960.webp
-├── desk-setup-640.webp
-└── desk-setup-thumbnail.webp
-```
-
-```html
-<picture>
-  <source
-    type="image/webp"
-    srcset="
-      /images/desk-setup-640.webp 640w,
-      /images/desk-setup-960.webp 960w,
-      /images/desk-setup-1600.webp 1600w
-    "
-  />
-  <img
-    src="/images/desk-setup-original.jpg"
-    width="1600"
-    height="1200"
-    loading="lazy"
-    alt=""
-  />
-</picture>
-```
-
-生成的路径和文件名可在复制后按项目实际目录调整。
 
 ## 隐私与安全边界
 
@@ -87,7 +51,7 @@ desk-setup/
 12000 × 8000 × 4 bytes ≈ 366 MB
 ```
 
-AyayaImage 默认逐张处理并在完成后释放临时资源，但超大图片、多个输出变体和 ZIP 打包仍可能触发浏览器或移动设备的内存限制。遇到提示时，请减少单批数量或降低目标尺寸。
+AyayaImage 默认逐张处理并在完成后释放临时资源，但超大图片、批量结果和 ZIP 打包仍可能触发浏览器或移动设备的内存限制。遇到提示时，请减少单批数量或降低目标尺寸。
 
 ### 格式与目标体积
 
@@ -189,7 +153,7 @@ PNG / JPEG / WebP Blob
 - Astro：静态页面与 GitHub Pages build
 - React + TypeScript：交互与处理状态
 - Web Worker / OffscreenCanvas：尽量避免编码阻塞 UI，并提供兼容 fallback
-- JSZip：博客资源包和批量下载
+- JSZip：批量下载
 - 浏览器本地存储：保存自定义 presets
 - Service Worker：缓存 app shell，支持再次访问时离线运行
 

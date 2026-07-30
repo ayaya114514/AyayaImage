@@ -3,7 +3,6 @@ import {
   Archive,
   Check,
   CheckCircle2,
-  Copy,
   Download,
   FileImage,
   Image as ImageIcon,
@@ -11,7 +10,6 @@ import {
   LockKeyhole,
   Plus,
   Save,
-  ShieldCheck,
   SlidersHorizontal,
   Trash2,
   Upload,
@@ -53,7 +51,6 @@ import "../styles/app.css";
 type QueueStatus = "ready" | "processing" | "done" | "error";
 type CompressionMode = "quality" | "target-size" | "auto";
 type NamingMode = "original" | "pattern";
-type SnippetKind = "markdown" | "astro";
 
 type QueueItem = {
   id: string;
@@ -69,15 +66,6 @@ type QueueItem = {
   metadata?: InputMetadataSummary;
   metadataVerification?: OutputMetadataVerification;
   cropApplied?: boolean;
-};
-
-type BundleFile = {
-  name: string;
-  blob: Blob;
-  width: number;
-  height: number;
-  kind: "original" | "responsive" | "thumbnail";
-  metadataVerified: boolean;
 };
 
 const ACCEPTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -127,15 +115,6 @@ function formatBytes(bytes: number) {
   );
   const value = bytes / 1024 ** index;
   return `${value >= 100 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
-}
-
-function sourceExtension(file: File) {
-  const fromName = file.name.split(".").pop()?.toLowerCase();
-  if (fromName === "jpeg") return "jpg";
-  if (fromName && ["jpg", "png", "webp"].includes(fromName)) return fromName;
-  if (file.type === "image/png") return "png";
-  if (file.type === "image/webp") return "webp";
-  return "jpg";
 }
 
 function fileStem(name: string) {
@@ -223,15 +202,8 @@ export default function AyayaImageApp() {
   const [customPresetName, setCustomPresetName] = useState("");
   const [presetSaved, setPresetSaved] = useState(false);
 
-  const [bundleBaseName, setBundleBaseName] = useState("desk-setup");
-  const [bundleAlt, setBundleAlt] = useState("");
-  const [bundleFiles, setBundleFiles] = useState<BundleFile[]>([]);
-  const [bundleBusy, setBundleBusy] = useState(false);
-  const [bundleMessage, setBundleMessage] = useState("");
-  const [snippetKind, setSnippetKind] = useState<SnippetKind>("astro");
-  const [copied, setCopied] = useState(false);
   const [zipBusy, setZipBusy] = useState(false);
-  const isBusy = isImporting || isProcessing || bundleBusy || zipBusy;
+  const isBusy = isImporting || isProcessing || zipBusy;
 
   const activeItem = useMemo(
     () => items.find((item) => item.id === activeId) ?? items[0],
@@ -292,26 +264,6 @@ export default function AyayaImageApp() {
       objectUrlsRef.current.clear();
     };
   }, []);
-
-  useEffect(() => {
-    if (!activeItem) return;
-    if (
-      bundleBaseName === "desk-setup" ||
-      !items.some(
-        (item) =>
-          cleanName(fileStem(item.file.name), true, true) === bundleBaseName,
-      )
-    ) {
-      setBundleBaseName(
-        cleanName(fileStem(activeItem.file.name), true, true),
-      );
-    }
-  }, [activeItem?.id]); // Keep a manually edited base name while selection is stable.
-
-  useEffect(() => {
-    setBundleFiles([]);
-    setBundleMessage("");
-  }, [activeItem?.id, bundleBaseName]);
 
   const updateItem = useCallback(
     (id: string, update: Partial<QueueItem>) => {
@@ -642,7 +594,6 @@ export default function AyayaImageApp() {
   const downloadZip = async (
     files: Array<{ name: string; blob: Blob }>,
     filename: string,
-    folder?: string,
   ) => {
     if (!files.length || operationLockRef.current) return;
     operationLockRef.current = true;
@@ -650,8 +601,7 @@ export default function AyayaImageApp() {
     try {
       const { default: JSZip } = await import("jszip");
       const zip = new JSZip();
-      const target = folder ? zip.folder(folder) : zip;
-      files.forEach((file) => target?.file(file.name, file.blob));
+      files.forEach((file) => zip.file(file.name, file.blob));
       const blob = await zip.generateAsync({
         type: "blob",
         compression: "STORE",
@@ -661,164 +611,6 @@ export default function AyayaImageApp() {
       setZipBusy(false);
       operationLockRef.current = false;
     }
-  };
-
-  const createBlogBundle = async () => {
-    if (!activeItem || operationLockRef.current) return;
-    operationLockRef.current = true;
-    setBundleBusy(true);
-    setBundleMessage("正在逐个生成尺寸，避免同时占用过多内存…");
-    setBundleFiles([]);
-
-    const base = cleanName(bundleBaseName, true, true);
-    const output: BundleFile[] = [];
-    const workerClient = new ImageWorkerClient();
-
-    try {
-      const originalResult = await workerClient.process(activeItem.file, {
-        resize: { mode: "original", noUpscale: true },
-        format: "original",
-        compression: { mode: "quality", quality: 0.92 },
-      });
-      const originalMetadata = await verifyOutputMetadata(originalResult.blob);
-      output.push({
-        name: `${base}-original.${extensionForMimeType(originalResult.mimeType)}`,
-        blob: originalResult.blob,
-        width: originalResult.width,
-        height: originalResult.height,
-        kind: "original",
-        metadataVerified: originalMetadata.metadataRemoved,
-      });
-
-      const seenWidths = new Set<number>();
-      for (const [index, requestedWidth] of [1600, 960, 640].entries()) {
-        const result = await workerClient.process(activeItem.file, {
-          resize: {
-            mode: "width",
-            width: requestedWidth,
-            noUpscale: true,
-          },
-          format: "webp",
-          compression: {
-            mode: "quality",
-            quality: [0.82, 0.8, 0.78][index] ?? 0.8,
-          },
-        });
-        if (seenWidths.has(result.width)) continue;
-        seenWidths.add(result.width);
-        const metadata = await verifyOutputMetadata(result.blob);
-        output.push({
-          name: `${base}-${result.width}.${extensionForMimeType(result.mimeType)}`,
-          blob: result.blob,
-          width: result.width,
-          height: result.height,
-          kind: "responsive",
-          metadataVerified: metadata.metadataRemoved,
-        });
-      }
-
-      const thumbnail = await workerClient.process(activeItem.file, {
-        resize: {
-          mode: "fixed",
-          width: 640,
-          height: 360,
-          noUpscale: true,
-        },
-        format: "webp",
-        compression: { mode: "quality", quality: 0.78 },
-      });
-      const thumbnailMetadata = await verifyOutputMetadata(thumbnail.blob);
-      output.push({
-        name: `${base}-thumbnail.${extensionForMimeType(thumbnail.mimeType)}`,
-        blob: thumbnail.blob,
-        width: thumbnail.width,
-        height: thumbnail.height,
-        kind: "thumbnail",
-        metadataVerified: thumbnailMetadata.metadataRemoved,
-      });
-
-      setBundleFiles(output);
-      setBundleMessage(
-        output.every((file) => file.metadataVerified)
-          ? "资源包已生成，所有输出均未发现常见隐私 metadata"
-          : "资源包已生成；部分文件未能完成常见隐私 metadata 检查",
-      );
-    } catch (error) {
-      setBundleMessage(
-        error instanceof Error ? error.message : "资源包生成失败",
-      );
-    } finally {
-      workerClient.terminate();
-      setBundleBusy(false);
-      operationLockRef.current = false;
-    }
-  };
-
-  const snippet = useMemo(() => {
-    const base = cleanName(bundleBaseName, true, true);
-    const alt = bundleAlt
-      .replaceAll("&", "&amp;")
-      .replaceAll('"', "&quot;")
-      .replaceAll("<", "&lt;")
-      .replaceAll(">", "&gt;");
-    const responsiveFiles = bundleFiles
-      .filter((file) => file.kind === "responsive")
-      .sort((a, b) => a.width - b.width);
-    const originalFile = bundleFiles.find((file) => file.kind === "original");
-    const fallbackResponsive = responsiveFiles.at(-1);
-
-    if (snippetKind === "markdown") {
-      const markdownAlt = bundleAlt
-        .replaceAll("\\", "\\\\")
-        .replaceAll("]", "\\]");
-      const path = fallbackResponsive?.name ?? `${base}-1600.webp`;
-      return `![${markdownAlt}](/images/${path})`;
-    }
-
-    const plannedWidths = [640, 960, 1600]
-      .map((value) => Math.min(activeItem?.width ?? value, value))
-      .filter((value, index, values) => values.indexOf(value) === index)
-      .sort((a, b) => a - b);
-    const srcset = responsiveFiles.length > 0
-      ? responsiveFiles
-          .map((file) => `      /images/${file.name} ${file.width}w`)
-          .join(",\n")
-      : plannedWidths
-          .map((value) => `      /images/${base}-${value}.webp ${value}w`)
-          .join(",\n");
-    const originalName = originalFile?.name
-      ?? `${base}-original.${activeItem ? sourceExtension(activeItem.file) : "jpg"}`;
-    const intrinsicWidth = originalFile?.width ?? activeItem?.width ?? 1600;
-    const intrinsicHeight = originalFile?.height ?? activeItem?.height ?? 1200;
-
-    return `<picture>
-  <source
-    type="image/webp"
-    srcset="
-${srcset}
-    "
-  />
-  <img
-    src="/images/${originalName}"
-    width="${intrinsicWidth}"
-    height="${intrinsicHeight}"
-    loading="lazy"
-    decoding="async"
-    alt="${alt}"
-  />
-</picture>`;
-  }, [
-    activeItem,
-    bundleAlt,
-    bundleBaseName,
-    bundleFiles,
-    snippetKind,
-  ]);
-
-  const copySnippet = async () => {
-    await navigator.clipboard.writeText(snippet);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 1_500);
   };
 
   const handleDropZoneKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -838,29 +630,22 @@ ${srcset}
 
   return (
     <div className="app-shell" data-testid="ayayaimage-app">
-      <header className="topbar">
-        <a className="brand" href="./" aria-label="AyayaImage 首页">
-          <span className="brand-mark" aria-hidden="true">
-            A
-          </span>
-          <span>AyayaImage</span>
-        </a>
-        <div className="privacy-status" title="文件不会上传到服务器">
-          <ShieldCheck aria-hidden="true" size={15} />
-          <span>本地处理</span>
-          <span className="status-dot" aria-hidden="true" />
-        </div>
-      </header>
-
       <main>
         <section className="import-section" aria-labelledby="import-heading">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">01 / IMPORT</p>
-              <h1 id="import-heading">发布前，把图片处理好。</h1>
-            </div>
-            <p className="section-note">
-              JPEG、PNG、WebP · 文件不会离开你的设备
+          <div className="hero">
+            <a className="content-brand" href="./" aria-label="AyayaImage 首页">
+              <img
+                className="brand-icon"
+                src={`${import.meta.env.BASE_URL}icons/favicon-64.png`}
+                width="28"
+                height="28"
+                alt=""
+              />
+              <span>AyayaImage</span>
+            </a>
+            <h1 id="import-heading">图片处理，保持简单。</h1>
+            <p>
+              调整尺寸、转换格式、压缩和批量命名。所有处理都在当前设备完成。
             </p>
           </div>
 
@@ -901,12 +686,12 @@ ${srcset}
             />
             <Upload aria-hidden="true" size={20} />
             <div>
-              <strong>{isImporting ? "正在读取…" : "拖入图片"}</strong>
+              <strong>{isImporting ? "正在读取…" : "选择图片"}</strong>
               <span>
-                或点击选择 / ⌘V 粘贴，最多 {MAX_QUEUE_LENGTH} 张
+                拖入、点击选择或 ⌘V 粘贴，最多 {MAX_QUEUE_LENGTH} 张
               </span>
             </div>
-            <span className="drop-action">选择文件</span>
+            <span className="drop-action">浏览</span>
           </div>
 
           <p className="sr-announcement" aria-live="polite">
@@ -991,23 +776,19 @@ ${srcset}
           )}
         </section>
 
-        <section
-          className="editor-section"
-          aria-labelledby="settings-heading"
-          data-testid="optimize-workspace"
-        >
-          <div className="section-heading compact">
-            <div>
-              <p className="eyebrow">02 / OPTIMIZE</p>
-              <h2 id="settings-heading">输出设置</h2>
-            </div>
-            {items.length > 0 && (
+        {items.length > 0 && (
+          <section
+            className="editor-section"
+            aria-labelledby="settings-heading"
+            data-testid="optimize-workspace"
+          >
+            <div className="section-heading compact">
+              <h2 id="settings-heading">设置与预览</h2>
               <span className="active-file-label">
                 <FileImage aria-hidden="true" size={14} />
                 {activeItem?.file.name}
               </span>
-            )}
-          </div>
+            </div>
 
           <div className="preset-row" aria-label="用途预设">
             {PRESETS.map((preset) => {
@@ -1023,11 +804,11 @@ ${srcset}
                   type="button"
                   key={preset.id}
                   disabled={isBusy}
+                  title={`${copy.label}：${copy.use}`}
                   onClick={() => applyPreset(preset.id)}
                   aria-pressed={selectedPreset === preset.id}
                 >
                   <span>{copy.label}</span>
-                  <small>{copy.use}</small>
                 </button>
               );
             })}
@@ -1039,11 +820,11 @@ ${srcset}
                   }`}
                   type="button"
                   disabled={isBusy}
+                  title={`${preset.label}：自定义 preset`}
                   onClick={() => applyPreset(preset.id)}
                   aria-pressed={selectedPreset === preset.id}
                 >
                   <span>{preset.label}</span>
-                  <small>自定义</small>
                 </button>
                 <button
                   className="delete-preset"
@@ -1263,10 +1044,16 @@ ${srcset}
                   )}
               </fieldset>
 
-              <fieldset
-                className="control-group naming-group"
-                disabled={isBusy}
-              >
+              <details className="advanced-settings">
+                <summary>
+                  <span>更多设置</span>
+                  <small>命名与 preset</small>
+                </summary>
+                <div className="advanced-settings-content">
+                  <fieldset
+                    className="control-group naming-group"
+                    disabled={isBusy}
+                  >
                 <legend>命名</legend>
                 <div className="segmented two" aria-label="命名方式">
                   <button
@@ -1360,45 +1147,47 @@ ${srcset}
                     添加尺寸
                   </label>
                 </div>
-              </fieldset>
+                  </fieldset>
 
-              <details className="save-preset">
-                <summary>
-                  <Plus aria-hidden="true" size={14} />
-                  保存当前设置为 preset
-                </summary>
-                <div>
-                  <label className="field">
-                    <span>Preset 名称</span>
-                    <input
-                      type="text"
-                      value={customPresetName}
-                      disabled={isBusy}
-                      placeholder="例如：博客横图"
-                      onChange={(event) =>
-                        setCustomPresetName(event.target.value)
-                      }
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          void saveCurrentPreset();
-                        }
-                      }}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() => void saveCurrentPreset()}
-                    disabled={!customPresetName.trim() || isBusy}
-                  >
-                    {presetSaved ? (
-                      <CheckCircle2 aria-hidden="true" size={15} />
-                    ) : (
-                      <Save aria-hidden="true" size={15} />
-                    )}
-                    {presetSaved ? "已保存" : "保存到此设备"}
-                  </button>
+                  <div className="save-preset">
+                    <p className="save-preset-label">
+                      <Plus aria-hidden="true" size={14} />
+                      保存当前设置为 preset
+                    </p>
+                    <div>
+                      <label className="field">
+                        <span>Preset 名称</span>
+                        <input
+                          type="text"
+                          value={customPresetName}
+                          disabled={isBusy}
+                          placeholder="例如：博客横图"
+                          onChange={(event) =>
+                            setCustomPresetName(event.target.value)
+                          }
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              void saveCurrentPreset();
+                            }
+                          }}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => void saveCurrentPreset()}
+                        disabled={!customPresetName.trim() || isBusy}
+                      >
+                        {presetSaved ? (
+                          <CheckCircle2 aria-hidden="true" size={15} />
+                        ) : (
+                          <Save aria-hidden="true" size={15} />
+                        )}
+                        {presetSaved ? "已保存" : "保存到此设备"}
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </details>
 
@@ -1664,175 +1453,10 @@ ${srcset}
               )}
             </div>
           </div>
-        </section>
+          </section>
+        )}
 
-        <section
-          className="bundle-section"
-          aria-labelledby="bundle-heading"
-          data-testid="blog-bundle"
-        >
-          <div className="section-heading compact">
-            <div>
-              <p className="eyebrow">03 / BLOG BUNDLE</p>
-              <h2 id="bundle-heading">一张原图，生成完整资源包。</h2>
-            </div>
-            <p className="section-note">1600 / 960 / 640 / thumbnail + code</p>
-          </div>
-
-          <div className="bundle-grid">
-            <div className="bundle-builder">
-              <div className="inline-fields">
-                <label className="field">
-                  <span>文件名</span>
-                  <input
-                    type="text"
-                    value={bundleBaseName}
-                    disabled={isBusy}
-                    onChange={(event) => setBundleBaseName(event.target.value)}
-                    spellCheck={false}
-                  />
-                </label>
-                <label className="field">
-                  <span>Alt text</span>
-                  <input
-                    type="text"
-                    value={bundleAlt}
-                    disabled={isBusy}
-                    placeholder="简短描述图片内容"
-                    onChange={(event) => setBundleAlt(event.target.value)}
-                  />
-                </label>
-              </div>
-
-              <div className="file-tree" aria-label="资源包文件">
-                <p>{cleanName(bundleBaseName, true, true)}/</p>
-                {(bundleFiles.length > 0
-                  ? bundleFiles.map((file) => file.name)
-                  : [
-                      `${cleanName(bundleBaseName, true, true)}-original.${
-                        activeItem ? sourceExtension(activeItem.file) : "jpg"
-                      }`,
-                      ...[1600, 960, 640]
-                        .map((value) =>
-                          Math.min(activeItem?.width ?? value, value),
-                        )
-                        .filter(
-                          (value, index, values) =>
-                            values.indexOf(value) === index,
-                        )
-                        .map(
-                          (value) =>
-                            `${cleanName(bundleBaseName, true, true)}-${value}.webp`,
-                        ),
-                      `${cleanName(bundleBaseName, true, true)}-thumbnail.webp`,
-                    ]
-                ).map((name, index, list) => (
-                  <span key={name}>
-                    {index === list.length - 1 ? "└──" : "├──"}{" "}
-                    {name}
-                  </span>
-                ))}
-              </div>
-
-              <div className="bundle-actions">
-                <button
-                  className="primary-button"
-                  type="button"
-                  disabled={!activeItem || isBusy}
-                  onClick={() => void createBlogBundle()}
-                >
-                  {bundleBusy ? (
-                    <LoaderCircle
-                      className="spin"
-                      aria-hidden="true"
-                      size={16}
-                    />
-                  ) : (
-                    <Plus aria-hidden="true" size={16} />
-                  )}
-                  {bundleBusy ? "正在生成" : "生成资源包"}
-                </button>
-                <button
-                  className="secondary-button"
-                  type="button"
-                  disabled={!bundleFiles.length || isBusy}
-                  onClick={() =>
-                    void downloadZip(
-                      bundleFiles,
-                      `${cleanName(bundleBaseName, true, true)}.zip`,
-                      cleanName(bundleBaseName, true, true),
-                    )
-                  }
-                >
-                  <Archive aria-hidden="true" size={16} />
-                  下载 ZIP
-                </button>
-              </div>
-              <p className="bundle-status" aria-live="polite">
-                {bundleMessage ||
-                  (activeItem
-                    ? `来源：${activeItem.file.name}`
-                    : "先在上方导入并选择一张图片")}
-              </p>
-            </div>
-
-            <div className="snippet-panel" data-testid="snippet-panel">
-              <div className="snippet-toolbar">
-                <div className="snippet-tabs">
-                  <button
-                    type="button"
-                    aria-pressed={snippetKind === "astro"}
-                    className={snippetKind === "astro" ? "is-active" : ""}
-                    onClick={() => setSnippetKind("astro")}
-                  >
-                    Astro / HTML
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={snippetKind === "markdown"}
-                    className={snippetKind === "markdown" ? "is-active" : ""}
-                    onClick={() => setSnippetKind("markdown")}
-                  >
-                    Markdown
-                  </button>
-                </div>
-                <button
-                  className="copy-button"
-                  type="button"
-                  onClick={() => void copySnippet()}
-                  aria-label="复制代码"
-                >
-                  {copied ? (
-                    <Check aria-hidden="true" size={14} />
-                  ) : (
-                    <Copy aria-hidden="true" size={14} />
-                  )}
-                  {copied ? "已复制" : "复制"}
-                </button>
-              </div>
-              <pre>
-                <code>{snippet}</code>
-              </pre>
-            </div>
-          </div>
-        </section>
-
-        <section className="privacy-section" aria-labelledby="privacy-heading">
-          <div>
-            <ShieldCheck aria-hidden="true" size={18} />
-            <h2 id="privacy-heading">隐私是处理流程的一部分。</h2>
-          </div>
-          <p>
-            图片通过浏览器 Canvas 重新编码，通常会移除 EXIF、GPS、设备与拍摄时间。
-            AyayaImage 面向 Web publishing，不用于专业摄影归档；下载前仍建议检查重要文件。
-          </p>
-        </section>
       </main>
-
-      <footer>
-        <span>AyayaImage</span>
-        <span>Local-first web publishing optimizer</span>
-      </footer>
     </div>
   );
 }

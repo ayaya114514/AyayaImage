@@ -140,28 +140,3 @@ export interface WorkerProcessFailure {
 export type WorkerProcessResponse =
   | WorkerProcessSuccess
   | WorkerProcessFailure;
-
-export interface BlogBundlePlanOptions {
-  widths?: readonly number[];
-  thumbnail?: {
-    width: number;
-    height: number;
-  };
-  format?: Exclude<OutputFormat, 'original'>;
-  quality?: number;
-  includeOriginal?: boolean;
-}
-
-export interface BlogBundleVariant {
-  id: string;
-  suffix: string;
-  width: number | null;
-  height: number | null;
-  resize: ResizeOptions;
-  format: OutputFormat;
-  quality: number;
-}
-
-export interface BlogBundleOutput extends BlogBundleVariant {
-  image: ProcessedImage;
-}

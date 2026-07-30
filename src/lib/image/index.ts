@@ -27,13 +27,6 @@ export {
   type NamingOptions,
 } from './naming';
 export {
-  generateMarkdownImage,
-  generateAstroImageSnippet,
-  generatePictureSnippet,
-  type PictureSnippetOptions,
-  type PictureVariant,
-} from './snippets';
-export {
   inspectInputMetadata,
   verifyOutputMetadata,
   type InputMetadataSummary,
@@ -41,17 +34,7 @@ export {
   type OutputMetadataVerification,
 } from './metadata';
 export {
-  buildBlogBundleTasks,
-  createBlogBundlePlan,
-  processBlogBundle,
-  type BlogBundleTask,
-  type ProcessBlogBundleOptions,
-} from './blog-bundle';
-export {
   SUPPORTED_MIME_TYPES,
-  type BlogBundleOutput,
-  type BlogBundlePlanOptions,
-  type BlogBundleVariant,
   type CompressionOptions,
   type CustomImagePreset,
   type DrawPlan,
