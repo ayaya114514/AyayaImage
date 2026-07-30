@@ -1,0 +1,90 @@
+---
+import AyayaImageApp from '../components/AyayaImageApp';
+
+const base = import.meta.env.BASE_URL;
+const canonical = Astro.site ? new URL(base, Astro.site) : Astro.url;
+const ogImage = new URL(`${base}og.png`, Astro.site ?? Astro.url);
+const isProduction = import.meta.env.PROD;
+const title = 'AyayaImage — 本地批量图片预处理';
+const description =
+  '面向博客、GitHub README 和社交媒体的本地图片预处理工具。批量调整尺寸、转换格式、压缩、重命名并生成博客资源包，图片不会离开浏览器。';
+---
+
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0a0a0a" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="description" content={description} />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href={canonical} />
+    <link rel="manifest" href={`${base}manifest.webmanifest`} />
+    <link rel="icon" type="image/png" href={`${base}icons/favicon-64.png`} />
+    <link rel="apple-touch-icon" href={`${base}icons/icon-192.png`} />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="AyayaImage 本地批量图片预处理" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+    <title>{title}</title>
+  </head>
+  <body>
+    <AyayaImageApp client:load />
+    <noscript>
+      <main class="noscript">
+        <strong>AyayaImage 需要 JavaScript</strong>
+        <p>所有图片处理都在浏览器本地完成，因此需要启用 JavaScript。</p>
+      </main>
+    </noscript>
+
+    <script is:inline define:vars={{ base, isProduction }}>
+      if ('serviceWorker' in navigator && isProduction) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register(`${base}sw.js`, { scope: base }).catch(() => {
+            // Offline support is optional; image processing remains fully local.
+          });
+        });
+      }
+    </script>
+  </body>
+</html>
+
+<style is:global>
+  :root {
+    color-scheme: dark;
+    background: #0a0a0a;
+  }
+
+  html {
+    min-width: 320px;
+    min-height: 100%;
+    background: #0a0a0a;
+  }
+
+  body {
+    min-height: 100vh;
+    margin: 0;
+    background: #0a0a0a;
+  }
+
+  .noscript {
+    width: min(560px, calc(100% - 40px));
+    margin: 20vh auto 0;
+    color: #f5f5f5;
+    font: 15px/1.6 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+      "Segoe UI", sans-serif;
+  }
+
+  .noscript p {
+    color: #9c9c9c;
+  }
+</style>
