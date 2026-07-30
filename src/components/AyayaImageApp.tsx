@@ -4,10 +4,7 @@ import {
   Check,
   CheckCircle2,
   Download,
-  FileImage,
-  Image as ImageIcon,
   LoaderCircle,
-  LockKeyhole,
   Plus,
   Save,
   SlidersHorizontal,
@@ -76,13 +73,13 @@ const DESKTOP_PIXEL_LIMIT = 100_000_000;
 const MOBILE_PIXEL_LIMIT = 40_000_000;
 const ZIP_MEMORY_WARNING = 250 * 1024 * 1024;
 
-const PRESET_LABELS: Record<string, { label: string; use: string }> = {
-  "blog-body": { label: "博客正文", use: "最长边 1600" },
-  "blog-thumbnail": { label: "博客缩略图", use: "640 × 360" },
-  "open-graph": { label: "Open Graph", use: "1200 × 630" },
-  "github-readme": { label: "GitHub README", use: "最长边 1200" },
-  avatar: { label: "Avatar", use: "512 × 512" },
-  original: { label: "Original", use: "不缩放" },
+const PRESET_LABELS: Record<string, string> = {
+  "blog-body": "博客正文",
+  "blog-thumbnail": "博客缩略图",
+  "open-graph": "Open Graph",
+  "github-readme": "GitHub README",
+  avatar: "Avatar",
+  original: "Original",
 };
 
 const FORMAT_LABELS: Record<ProcessOptions["format"], string> = {
@@ -164,6 +161,7 @@ function statusText(status: QueueStatus) {
 
 export default function AyayaImageApp() {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const emptyPickerRef = useRef<HTMLDivElement>(null);
   const objectUrlsRef = useRef(new Set<string>());
   const operationLockRef = useRef(false);
   const [items, setItems] = useState<QueueItem[]>([]);
@@ -362,7 +360,7 @@ export default function AyayaImageApp() {
     return () => window.removeEventListener("paste", handlePaste);
   }, [addFiles, isBusy]);
 
-  const handleDrop = (event: DragEvent<HTMLDivElement>) => {
+  const handleDrop = (event: DragEvent<HTMLElement>) => {
     event.preventDefault();
     setIsDragging(false);
     if (isBusy) return;
@@ -372,12 +370,16 @@ export default function AyayaImageApp() {
   };
 
   const removeItem = (id: string) => {
+    const isLastItem = items.length === 1;
     const target = items.find((item) => item.id === id);
     releaseObjectUrl(target?.sourceUrl);
     releaseObjectUrl(target?.resultUrl);
     setItems((current) => current.filter((item) => item.id !== id));
     if (activeId === id) {
       setActiveId(items.find((item) => item.id !== id)?.id);
+    }
+    if (isLastItem) {
+      window.requestAnimationFrame(() => emptyPickerRef.current?.focus());
     }
   };
 
@@ -389,6 +391,7 @@ export default function AyayaImageApp() {
     setItems([]);
     setActiveId(undefined);
     setQueueMessage("队列已清空");
+    window.requestAnimationFrame(() => emptyPickerRef.current?.focus());
   };
 
   const setResizeFromPreset = (resize: ResizeOptions) => {
@@ -411,6 +414,7 @@ export default function AyayaImageApp() {
     setSelectedPreset(id);
     setResizeFromPreset(preset.resize);
     setFormat(preset.suggestedFormat);
+    setCompressionMode("auto");
     setQuality(Math.round(preset.suggestedQuality * 100));
   };
 
@@ -583,7 +587,7 @@ export default function AyayaImageApp() {
   const deleteCustomPreset = async (id: string) => {
     const next = customPresets.filter((preset) => preset.id !== id);
     setCustomPresets(next);
-    if (selectedPreset === id) setSelectedPreset("blog-body");
+    if (selectedPreset === id) setSelectedPreset("");
     try {
       await deleteStoredPreset(id);
     } catch {
@@ -635,97 +639,108 @@ export default function AyayaImageApp() {
     >
       <main>
         <section
-          className={`import-section${items.length > 0 ? " has-items" : ""}`}
+          className={`import-section${isDragging ? " is-dragging" : ""}`}
           aria-label="图片导入"
+          onDragEnter={(event) => {
+            event.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragOver={(event) => event.preventDefault()}
+          onDragLeave={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node)) {
+              setIsDragging(false);
+            }
+          }}
+          onDrop={handleDrop}
         >
-          <div className="hero">
-            <a className="content-brand" href="./" aria-label="AyayaImage 首页">
-              <img
-                className="brand-icon"
-                src={`${import.meta.env.BASE_URL}icons/favicon-64.png`}
-                width="28"
-                height="28"
-                alt=""
-              />
-              <span>AyayaImage</span>
-            </a>
-          </div>
+          <input
+            ref={fileInputRef}
+            className="visually-hidden"
+            type="file"
+            tabIndex={-1}
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            disabled={isBusy}
+            onChange={handleFileInput}
+          />
 
-          <div
-            className={`drop-zone${isDragging ? " is-dragging" : ""}${
-              isBusy ? " is-disabled" : ""
-            }`}
-            data-testid="drop-zone"
-            role="button"
-            tabIndex={0}
-            aria-label="选择或拖入图片"
-            aria-describedby="import-note"
-            aria-disabled={isBusy}
-            onClick={() => {
-              if (!isBusy) fileInputRef.current?.click();
-            }}
-            onKeyDown={handleDropZoneKeyDown}
-            onDragEnter={(event) => {
-              event.preventDefault();
-              setIsDragging(true);
-            }}
-            onDragOver={(event) => event.preventDefault()}
-            onDragLeave={(event) => {
-              if (!event.currentTarget.contains(event.relatedTarget as Node)) {
-                setIsDragging(false);
-              }
-            }}
-            onDrop={handleDrop}
-          >
-            <input
-              ref={fileInputRef}
-              className="visually-hidden"
-              type="file"
-              tabIndex={-1}
-              accept="image/jpeg,image/png,image/webp"
-              multiple
-              disabled={isBusy}
-              onChange={handleFileInput}
-            />
-            <Upload aria-hidden="true" size={20} />
-            <div>
-              <strong>{isImporting ? "正在读取…" : "拖入图片"}</strong>
-              <span>或点击选择 · ⌘V 粘贴</span>
-            </div>
-          </div>
-
-          <p className="import-note" id="import-note">
-            <LockKeyhole aria-hidden="true" size={12} />
-            JPEG · PNG · WebP · 最多 {MAX_QUEUE_LENGTH} 张 · 本地处理
-          </p>
-
-          <p className="sr-announcement" aria-live="polite">
-            {queueMessage}
-          </p>
-
-          {items.length > 0 && (
-            <div className="queue-block">
-              <div className="queue-meta">
-                <span>
-                  {items.length} 张 · {formatBytes(totalInputSize)}
-                </span>
-                <button
-                  className="text-button danger"
-                  type="button"
-                  onClick={clearQueue}
-                  disabled={isBusy}
-                >
-                  <Trash2 aria-hidden="true" size={14} />
-                  清空
-                </button>
+          {items.length === 0 ? (
+            <div className="empty-state">
+              <div className="content-brand">
+                <img
+                  className="brand-icon"
+                  src={`${import.meta.env.BASE_URL}icons/favicon-64.png`}
+                  width="28"
+                  height="28"
+                  alt=""
+                />
+                <span>AyayaImage</span>
               </div>
+
+              <div
+                ref={emptyPickerRef}
+                className={`drop-zone${isDragging ? " is-dragging" : ""}${
+                  isBusy ? " is-disabled" : ""
+                }`}
+                data-testid="drop-zone"
+                role="button"
+                tabIndex={0}
+                aria-label="选择或拖入 JPEG、PNG 或 WebP 图片，所有处理均在本地完成"
+                aria-disabled={isBusy}
+                onClick={() => {
+                  if (!isBusy) fileInputRef.current?.click();
+                }}
+                onKeyDown={handleDropZoneKeyDown}
+              >
+                <Upload aria-hidden="true" size={20} />
+                <strong>{isImporting ? "正在读取…" : "选择图片"}</strong>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="workspace-header">
+                <div className="content-brand">
+                  <img
+                    className="brand-icon"
+                    src={`${import.meta.env.BASE_URL}icons/favicon-64.png`}
+                    width="28"
+                    height="28"
+                    alt=""
+                  />
+                  <span>AyayaImage</span>
+                </div>
+                <div className="workspace-actions">
+                  <span>
+                    {items.length} 张 · {formatBytes(totalInputSize)}
+                  </span>
+                  <button
+                    className="text-button"
+                    type="button"
+                    disabled={isBusy}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Plus aria-hidden="true" size={14} />
+                    添加图片
+                  </button>
+                  <button
+                    className="icon-button"
+                    type="button"
+                    onClick={clearQueue}
+                    disabled={isBusy}
+                    aria-label="清空图片队列"
+                  >
+                    <Trash2 aria-hidden="true" size={14} />
+                  </button>
+                </div>
+              </div>
+
               <div
                 className="queue-list"
                 role="list"
                 aria-label="图片队列"
                 data-testid="image-queue"
               >
-                {items.map((item, index) => (
+                {items.map((item) => (
                   <div
                     key={item.id}
                     className={`queue-item${
@@ -740,9 +755,6 @@ export default function AyayaImageApp() {
                       onClick={() => setActiveId(item.id)}
                       aria-pressed={activeItem?.id === item.id}
                     >
-                      <span className="queue-index">
-                        {String(index + 1).padStart(2, "0")}
-                      </span>
                       <img src={item.sourceUrl} alt="" />
                       <span className="queue-file">
                         <strong>{item.file.name}</strong>
@@ -772,102 +784,117 @@ export default function AyayaImageApp() {
                       aria-label={`移除 ${item.file.name}`}
                       onClick={() => removeItem(item.id)}
                     >
-                      <X aria-hidden="true" size={15} />
+                      <X aria-hidden="true" size={14} />
                     </button>
                   </div>
                 ))}
               </div>
-            </div>
+            </>
           )}
+
+          <p className="sr-announcement" aria-live="polite">
+            {queueMessage}
+          </p>
         </section>
 
         {items.length > 0 && (
           <section
             className="editor-section"
-            aria-labelledby="settings-heading"
+            aria-label="图片设置与预览"
             data-testid="optimize-workspace"
           >
-            <div className="section-heading compact">
-              <h2 id="settings-heading">设置与预览</h2>
-              <span className="active-file-label">
-                <FileImage aria-hidden="true" size={14} />
-                {activeItem?.file.name}
-              </span>
+            <div className="quick-controls">
+                  <label className="field">
+                    <span>用途</span>
+                    <select
+                      value={selectedPreset}
+                      disabled={isBusy}
+                      onChange={(event) => applyPreset(event.target.value)}
+                    >
+                      <option value="" disabled>
+                        自定义设置
+                      </option>
+                      {PRESETS.map((preset) => (
+                        <option key={preset.id} value={preset.id}>
+                          {PRESET_LABELS[preset.id] ?? preset.label}
+                        </option>
+                      ))}
+                      {customPresets.length > 0 && (
+                        <optgroup label="自定义">
+                          {customPresets.map((preset) => (
+                            <option key={preset.id} value={preset.id}>
+                              {preset.label}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </select>
+                  </label>
+
+                  <label className="field">
+                    <span>尺寸</span>
+                    <select
+                      value={resizeMode}
+                      disabled={isBusy}
+                      onChange={(event) => {
+                        setResizeMode(
+                          event.target.value as ResizeOptions["mode"],
+                        );
+                        setSelectedPreset("");
+                      }}
+                    >
+                      <option value="original">保持原始尺寸</option>
+                      <option value="width">指定宽度</option>
+                      <option value="long-edge">指定最长边</option>
+                      <option value="percent">按百分比</option>
+                      <option value="fixed">固定尺寸裁剪</option>
+                    </select>
+                  </label>
+
+                  <label className="field" title={formatRecommendation}>
+                    <span>格式</span>
+                    <select
+                      value={format}
+                      disabled={isBusy}
+                      onChange={(event) => {
+                        setFormat(
+                          event.target.value as ProcessOptions["format"],
+                        );
+                        setSelectedPreset("");
+                      }}
+                    >
+                      {(
+                        ["webp", "jpeg", "png", "original"] as const
+                      ).map((value) => (
+                        <option key={value} value={value}>
+                          {FORMAT_LABELS[value]}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label className="field">
+                    <span>压缩</span>
+                    <select
+                      value={compressionMode}
+                      disabled={isBusy}
+                      onChange={(event) => {
+                        setCompressionMode(
+                          event.target.value as CompressionMode,
+                        );
+                        setSelectedPreset("");
+                      }}
+                    >
+                      <option value="auto">自动平衡</option>
+                      <option value="quality">指定 quality</option>
+                      <option value="target-size">指定最大体积</option>
+                    </select>
+                  </label>
             </div>
 
-          <div className="preset-row" aria-label="用途预设">
-            {PRESETS.map((preset) => {
-              const copy = PRESET_LABELS[preset.id] ?? {
-                label: preset.label,
-                use: preset.description,
-              };
-              return (
-                <button
-                  className={`preset-chip${
-                    selectedPreset === preset.id ? " is-active" : ""
-                  }`}
-                  type="button"
-                  key={preset.id}
-                  disabled={isBusy}
-                  title={`${copy.label}：${copy.use}`}
-                  onClick={() => applyPreset(preset.id)}
-                  aria-pressed={selectedPreset === preset.id}
-                >
-                  <span>{copy.label}</span>
-                </button>
-              );
-            })}
-            {customPresets.map((preset) => (
-              <span className="custom-chip-wrap" key={preset.id}>
-                <button
-                  className={`preset-chip${
-                    selectedPreset === preset.id ? " is-active" : ""
-                  }`}
-                  type="button"
-                  disabled={isBusy}
-                  title={`${preset.label}：自定义 preset`}
-                  onClick={() => applyPreset(preset.id)}
-                  aria-pressed={selectedPreset === preset.id}
-                >
-                  <span>{preset.label}</span>
-                </button>
-                <button
-                  className="delete-preset"
-                  type="button"
-                  disabled={isBusy}
-                  aria-label={`删除 preset ${preset.label}`}
-                  onClick={() => void deleteCustomPreset(preset.id)}
-                >
-                  <X aria-hidden="true" size={11} />
-                </button>
-              </span>
-            ))}
-          </div>
-
-          <div className="editor-grid">
-            <div className="controls-panel">
-              <fieldset className="control-group" disabled={isBusy}>
-                <legend>尺寸</legend>
-                <label className="field">
-                  <span>模式</span>
-                  <select
-                    value={resizeMode}
-                    onChange={(event) => {
-                      setResizeMode(
-                        event.target.value as ResizeOptions["mode"],
-                      );
-                      setSelectedPreset("");
-                    }}
-                  >
-                    <option value="original">保持原始尺寸</option>
-                    <option value="width">指定宽度</option>
-                    <option value="long-edge">指定最长边</option>
-                    <option value="percent">按百分比</option>
-                    <option value="fixed">固定尺寸裁剪</option>
-                  </select>
-                </label>
-
-                <div className="inline-fields">
+            <div className="editor-grid">
+              <div className="controls-panel">
+                <div className="contextual-controls">
                   {resizeMode === "width" && (
                     <label className="field">
                       <span>宽度</span>
@@ -877,9 +904,11 @@ export default function AyayaImageApp() {
                           min="1"
                           max="12000"
                           value={width}
-                          onChange={(event) =>
-                            setWidth(Number(event.target.value))
-                          }
+                          disabled={isBusy}
+                          onChange={(event) => {
+                            setWidth(Number(event.target.value));
+                            setSelectedPreset("");
+                          }}
                         />
                         <small>px</small>
                       </span>
@@ -894,9 +923,11 @@ export default function AyayaImageApp() {
                           min="1"
                           max="12000"
                           value={longEdge}
-                          onChange={(event) =>
-                            setLongEdge(Number(event.target.value))
-                          }
+                          disabled={isBusy}
+                          onChange={(event) => {
+                            setLongEdge(Number(event.target.value));
+                            setSelectedPreset("");
+                          }}
                         />
                         <small>px</small>
                       </span>
@@ -911,9 +942,11 @@ export default function AyayaImageApp() {
                           min="1"
                           max="400"
                           value={percent}
-                          onChange={(event) =>
-                            setPercent(Number(event.target.value))
-                          }
+                          disabled={isBusy}
+                          onChange={(event) => {
+                            setPercent(Number(event.target.value));
+                            setSelectedPreset("");
+                          }}
                         />
                         <small>%</small>
                       </span>
@@ -929,9 +962,11 @@ export default function AyayaImageApp() {
                             min="1"
                             max="12000"
                             value={width}
-                            onChange={(event) =>
-                              setWidth(Number(event.target.value))
-                            }
+                            disabled={isBusy}
+                            onChange={(event) => {
+                              setWidth(Number(event.target.value));
+                              setSelectedPreset("");
+                            }}
                           />
                           <small>px</small>
                         </span>
@@ -944,312 +979,290 @@ export default function AyayaImageApp() {
                             min="1"
                             max="12000"
                             value={height}
-                            onChange={(event) =>
-                              setHeight(Number(event.target.value))
-                            }
+                            disabled={isBusy}
+                            onChange={(event) => {
+                              setHeight(Number(event.target.value));
+                              setSelectedPreset("");
+                            }}
                           />
                           <small>px</small>
                         </span>
                       </label>
                     </>
                   )}
-                </div>
 
-                <label className="check-field">
-                  <input
-                    type="checkbox"
-                    checked={noUpscale}
-                    onChange={(event) => setNoUpscale(event.target.checked)}
-                  />
-                  <span className="check-box" aria-hidden="true">
-                    <Check size={11} />
-                  </span>
-                  禁止放大小图
-                </label>
-              </fieldset>
-
-              <fieldset className="control-group" disabled={isBusy}>
-                <legend>格式与压缩</legend>
-                <div className="segmented" aria-label="输出格式">
-                  {(
-                    ["webp", "jpeg", "png", "original"] as const
-                  ).map((value) => (
-                    <button
-                      type="button"
-                      key={value}
-                      className={format === value ? "is-active" : ""}
-                      onClick={() => setFormat(value)}
-                      aria-pressed={format === value}
-                    >
-                      {FORMAT_LABELS[value]}
-                    </button>
-                  ))}
-                </div>
-                <p className="format-hint">{formatRecommendation}</p>
-
-                <label className="field">
-                  <span>压缩方式</span>
-                  <select
-                    value={compressionMode}
-                    onChange={(event) =>
-                      setCompressionMode(
-                        event.target.value as CompressionMode,
-                      )
-                    }
-                  >
-                    <option value="auto">自动平衡</option>
-                    <option value="quality">指定 quality</option>
-                    <option value="target-size">指定最大体积</option>
-                  </select>
-                </label>
-
-                {compressionMode === "target-size" ? (
-                  <label className="field">
-                    <span>最大体积</span>
-                    <span className="number-input">
+                  {compressionMode === "target-size" ? (
+                    <label className="field">
+                      <span>最大体积</span>
+                      <span className="number-input">
+                        <input
+                          type="number"
+                          min="10"
+                          max="100000"
+                          value={targetSizeKb}
+                          disabled={isBusy}
+                          onChange={(event) => {
+                            setTargetSizeKb(Number(event.target.value));
+                            setSelectedPreset("");
+                          }}
+                        />
+                        <small>KB</small>
+                      </span>
+                    </label>
+                  ) : (
+                    <label className="range-field">
+                      <span>
+                        {compressionMode === "auto" ? "质量" : "Quality"}
+                        <output>{quality}%</output>
+                      </span>
                       <input
-                        type="number"
-                        min="10"
-                        max="100000"
-                        value={targetSizeKb}
-                        onChange={(event) =>
-                          setTargetSizeKb(Number(event.target.value))
-                        }
+                        type="range"
+                        min="20"
+                        max="100"
+                        step="1"
+                        value={quality}
+                        disabled={isBusy}
+                        onChange={(event) => {
+                          setQuality(Number(event.target.value));
+                          setSelectedPreset("");
+                        }}
                       />
-                      <small>KB</small>
-                    </span>
-                  </label>
-                ) : (
-                  <label className="range-field">
-                    <span>
-                      {compressionMode === "auto"
-                        ? "质量倾向"
-                        : "Quality"}
-                      <output>{quality}%</output>
-                    </span>
+                    </label>
+                  )}
+
+                  <label className="check-field">
                     <input
-                      type="range"
-                      min="20"
-                      max="100"
-                      step="1"
-                      value={quality}
-                      onChange={(event) =>
-                        setQuality(Number(event.target.value))
-                      }
+                      type="checkbox"
+                      checked={noUpscale}
+                      disabled={isBusy}
+                      onChange={(event) => {
+                        setNoUpscale(event.target.checked);
+                        setSelectedPreset("");
+                      }}
                     />
+                    <span className="check-box" aria-hidden="true">
+                      <Check size={11} />
+                    </span>
+                    禁止放大
                   </label>
-                )}
+                </div>
 
                 {targetIncludesPng &&
                   compressionMode === "target-size" && (
                     <p className="inline-notice">
                       <AlertTriangle aria-hidden="true" size={14} />
-                      PNG 是 lossless，无法像 JPEG / WebP 一样精确命中体积。
+                      PNG 无法通过 quality 精确命中体积。
                     </p>
                   )}
-              </fieldset>
 
-              <details className="advanced-settings">
-                <summary>
-                  <span>更多设置</span>
-                  <small>命名与 preset</small>
-                </summary>
-                <div className="advanced-settings-content">
-                  <fieldset
-                    className="control-group naming-group"
-                    disabled={isBusy}
-                  >
-                <legend>命名</legend>
-                <div className="segmented two" aria-label="命名方式">
-                  <button
-                    type="button"
-                    className={namingMode === "original" ? "is-active" : ""}
-                    onClick={() => setNamingMode("original")}
-                    aria-pressed={namingMode === "original"}
-                  >
-                    原文件名
-                  </button>
-                  <button
-                    type="button"
-                    className={namingMode === "pattern" ? "is-active" : ""}
-                    onClick={() => setNamingMode("pattern")}
-                    aria-pressed={namingMode === "pattern"}
-                  >
-                    命名规则
-                  </button>
-                </div>
-
-                {namingMode === "pattern" && (
-                  <label className="field">
-                    <span>
-                      规则
-                      <small>{"{name} {index} {width} {height}"}</small>
-                    </span>
-                    <input
-                      type="text"
-                      value={pattern}
-                      onChange={(event) => setPattern(event.target.value)}
-                      spellCheck={false}
-                    />
-                  </label>
-                )}
-
-                <div className="inline-fields">
-                  <label className="field">
-                    <span>Prefix</span>
-                    <input
-                      type="text"
-                      value={prefix}
-                      onChange={(event) => setPrefix(event.target.value)}
-                    />
-                  </label>
-                  <label className="field">
-                    <span>Suffix</span>
-                    <input
-                      type="text"
-                      value={suffix}
-                      onChange={(event) => setSuffix(event.target.value)}
-                    />
-                  </label>
-                </div>
-
-                <div className="check-row">
-                  <label className="check-field">
-                    <input
-                      type="checkbox"
-                      checked={lowerCase}
-                      onChange={(event) => setLowerCase(event.target.checked)}
-                    />
-                    <span className="check-box" aria-hidden="true">
-                      <Check size={11} />
-                    </span>
-                    小写
-                  </label>
-                  <label className="check-field">
-                    <input
-                      type="checkbox"
-                      checked={stripSpecial}
-                      onChange={(event) =>
-                        setStripSpecial(event.target.checked)
-                      }
-                    />
-                    <span className="check-box" aria-hidden="true">
-                      <Check size={11} />
-                    </span>
-                    清理标点
-                  </label>
-                  <label className="check-field">
-                    <input
-                      type="checkbox"
-                      checked={appendDimensions}
-                      onChange={(event) =>
-                        setAppendDimensions(event.target.checked)
-                      }
-                    />
-                    <span className="check-box" aria-hidden="true">
-                      <Check size={11} />
-                    </span>
-                    添加尺寸
-                  </label>
-                </div>
-                  </fieldset>
-
-                  <div className="save-preset">
-                    <p className="save-preset-label">
-                      <Plus aria-hidden="true" size={14} />
-                      保存当前设置为 preset
-                    </p>
-                    <div>
+                <details className="advanced-settings">
+                  <summary>
+                    <span>更多设置</span>
+                    <small>命名与 preset</small>
+                  </summary>
+                  <div className="advanced-settings-content">
+                    <div className="naming-settings">
                       <label className="field">
-                        <span>Preset 名称</span>
-                        <input
-                          type="text"
-                          value={customPresetName}
+                        <span>命名方式</span>
+                        <select
+                          value={namingMode}
                           disabled={isBusy}
-                          placeholder="例如：博客横图"
                           onChange={(event) =>
-                            setCustomPresetName(event.target.value)
+                            setNamingMode(event.target.value as NamingMode)
                           }
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              event.preventDefault();
-                              void saveCurrentPreset();
-                            }
-                          }}
-                        />
+                        >
+                          <option value="original">原文件名</option>
+                          <option value="pattern">命名规则</option>
+                        </select>
                       </label>
-                      <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={() => void saveCurrentPreset()}
-                        disabled={!customPresetName.trim() || isBusy}
-                      >
-                        {presetSaved ? (
-                          <CheckCircle2 aria-hidden="true" size={15} />
-                        ) : (
-                          <Save aria-hidden="true" size={15} />
-                        )}
-                        {presetSaved ? "已保存" : "保存到此设备"}
-                      </button>
+
+                      {namingMode === "pattern" && (
+                        <label className="field">
+                          <span>
+                            规则
+                            <small>
+                              {"{name} {index} {width} {height}"}
+                            </small>
+                          </span>
+                          <input
+                            type="text"
+                            value={pattern}
+                            disabled={isBusy}
+                            onChange={(event) => setPattern(event.target.value)}
+                            spellCheck={false}
+                          />
+                        </label>
+                      )}
+
+                      <div className="inline-fields">
+                        <label className="field">
+                          <span>Prefix</span>
+                          <input
+                            type="text"
+                            value={prefix}
+                            disabled={isBusy}
+                            onChange={(event) => setPrefix(event.target.value)}
+                          />
+                        </label>
+                        <label className="field">
+                          <span>Suffix</span>
+                          <input
+                            type="text"
+                            value={suffix}
+                            disabled={isBusy}
+                            onChange={(event) => setSuffix(event.target.value)}
+                          />
+                        </label>
+                      </div>
+
+                      <div className="check-row">
+                        <label className="check-field">
+                          <input
+                            type="checkbox"
+                            checked={lowerCase}
+                            disabled={isBusy}
+                            onChange={(event) =>
+                              setLowerCase(event.target.checked)
+                            }
+                          />
+                          <span className="check-box" aria-hidden="true">
+                            <Check size={11} />
+                          </span>
+                          小写
+                        </label>
+                        <label className="check-field">
+                          <input
+                            type="checkbox"
+                            checked={stripSpecial}
+                            disabled={isBusy}
+                            onChange={(event) =>
+                              setStripSpecial(event.target.checked)
+                            }
+                          />
+                          <span className="check-box" aria-hidden="true">
+                            <Check size={11} />
+                          </span>
+                          清理标点
+                        </label>
+                        <label className="check-field">
+                          <input
+                            type="checkbox"
+                            checked={appendDimensions}
+                            disabled={isBusy}
+                            onChange={(event) =>
+                              setAppendDimensions(event.target.checked)
+                            }
+                          />
+                          <span className="check-box" aria-hidden="true">
+                            <Check size={11} />
+                          </span>
+                          添加尺寸
+                        </label>
+                      </div>
                     </div>
+
+                    <div className="save-preset">
+                      <p className="save-preset-label">
+                        保存当前设置
+                      </p>
+                      <div>
+                        <label className="field">
+                          <span>Preset 名称</span>
+                          <input
+                            type="text"
+                            value={customPresetName}
+                            disabled={isBusy}
+                            placeholder="例如：博客横图"
+                            onChange={(event) =>
+                              setCustomPresetName(event.target.value)
+                            }
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                void saveCurrentPreset();
+                              }
+                            }}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="secondary-button"
+                          onClick={() => void saveCurrentPreset()}
+                          disabled={!customPresetName.trim() || isBusy}
+                        >
+                          {presetSaved ? (
+                            <CheckCircle2 aria-hidden="true" size={15} />
+                          ) : (
+                            <Save aria-hidden="true" size={15} />
+                          )}
+                          {presetSaved ? "已保存" : "保存"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {customPresets.length > 0 && (
+                      <div className="saved-presets">
+                        <span>已保存</span>
+                        <div>
+                          {customPresets.map((preset) => (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => void deleteCustomPreset(preset.id)}
+                              aria-label={`删除 preset ${preset.label}`}
+                            >
+                              {preset.label}
+                              <X aria-hidden="true" size={11} />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
-              </details>
+                </details>
 
-              {(hasLargeImage ||
-                totalInputSize > ZIP_MEMORY_WARNING) && (
-                <div className="warning-stack" aria-label="处理提示">
-                  {hasLargeImage && (
-                    <p>
-                      <AlertTriangle aria-hidden="true" size={14} />
-                      队列包含超大图片，将逐张处理；移动端建议先减少数量。
-                    </p>
-                  )}
-                  {totalInputSize > ZIP_MEMORY_WARNING && (
-                    <p>
-                      <Archive aria-hidden="true" size={14} />
-                      输入总量较大，ZIP 会额外占用内存，建议分批下载。
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <button
-                className="primary-button process-button"
-                data-testid="process-button"
-                type="button"
-                onClick={() => void processQueue()}
-                disabled={!items.length || isBusy}
-              >
-                {isProcessing ? (
-                  <LoaderCircle className="spin" aria-hidden="true" size={17} />
-                ) : (
-                  <SlidersHorizontal aria-hidden="true" size={17} />
+                {(hasLargeImage ||
+                  totalInputSize > ZIP_MEMORY_WARNING) && (
+                  <div className="warning-stack" aria-label="处理提示">
+                    {hasLargeImage && (
+                      <p>
+                        <AlertTriangle aria-hidden="true" size={14} />
+                        队列包含超大图片，建议降低尺寸。
+                      </p>
+                    )}
+                    {totalInputSize > ZIP_MEMORY_WARNING && (
+                      <p>
+                        <Archive aria-hidden="true" size={14} />
+                        ZIP 可能占用较多内存，建议分批下载。
+                      </p>
+                    )}
+                  </div>
                 )}
-                {isProcessing
-                  ? "正在逐张处理"
-                  : `处理 ${items.length || 0} 张图片`}
-              </button>
-              <p className="processing-footnote">
-                <LockKeyhole aria-hidden="true" size={12} />
-                Canvas 本地重编码，不上传原图
-              </p>
-            </div>
 
-            <div className="preview-panel">
-              <div className="preview-toolbar">
-                <span>Before / After</span>
-                {activeItem?.result && (
-                  <span>
-                    {activeItem.result.savingsPercent >= 0
-                      ? `节省 ${activeItem.result.savingsPercent.toFixed(1)}%`
-                      : `增加 ${Math.abs(
-                          activeItem.result.savingsPercent,
-                        ).toFixed(1)}%`}
-                  </span>
-                )}
+                <button
+                  className="primary-button process-button"
+                  data-testid="process-button"
+                  type="button"
+                  onClick={() => void processQueue()}
+                  disabled={!items.length || isBusy}
+                >
+                  {isProcessing ? (
+                    <LoaderCircle
+                      className="spin"
+                      aria-hidden="true"
+                      size={17}
+                    />
+                  ) : (
+                    <SlidersHorizontal aria-hidden="true" size={17} />
+                  )}
+                  {isProcessing
+                    ? "正在处理"
+                    : `处理 ${items.length || 0} 张图片`}
+                </button>
               </div>
 
+              <div className="preview-panel">
               <div
                 className={[
                   "comparison",
@@ -1261,7 +1274,7 @@ export default function AyayaImageApp() {
                 style={previewStyle}
                 data-testid="before-after"
               >
-                {activeItem ? (
+                {activeItem && (
                   <>
                     <img
                       className="comparison-before"
@@ -1293,17 +1306,9 @@ export default function AyayaImageApp() {
                           }
                           aria-label="调整处理前后对比位置"
                         />
-                        <span className="compare-label before">原图</span>
-                        <span className="compare-label after">输出</span>
                       </>
                     )}
                   </>
-                ) : (
-                  <div className="preview-empty">
-                    <ImageIcon aria-hidden="true" size={24} />
-                    <p>导入图片后在这里预览</p>
-                    <span>处理完成后可拖动比较</span>
-                  </div>
                 )}
               </div>
 
@@ -1330,7 +1335,7 @@ export default function AyayaImageApp() {
                 </div>
               )}
 
-              {activeItem?.result ? (
+              {activeItem?.result && (
                 <div className="result-block" data-testid="result-panel">
                   <dl className="result-stats">
                     <div>
@@ -1351,6 +1356,12 @@ export default function AyayaImageApp() {
                         {formatBytes(activeItem.file.size)}
                         <span aria-hidden="true"> → </span>
                         {formatBytes(activeItem.result.size)}
+                        {activeItem.result.savingsPercent >= 0 && (
+                          <>
+                            {" · "}
+                            节省 {activeItem.result.savingsPercent.toFixed(1)}%
+                          </>
+                        )}
                       </dd>
                     </div>
                     <div>
@@ -1449,11 +1460,6 @@ export default function AyayaImageApp() {
                       全部 ZIP ({doneCount})
                     </button>
                   </div>
-                </div>
-              ) : (
-                <div className="result-placeholder">
-                  <span>OUTPUT</span>
-                  <p>处理后显示尺寸、体积、格式与 metadata 状态。</p>
                 </div>
               )}
             </div>

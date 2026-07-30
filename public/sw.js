@@ -1,5 +1,5 @@
 const CACHE_PREFIX = 'ayayaimage-shell';
-const CACHE_VERSION = 'v4';
+const CACHE_VERSION = 'v5';
 const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
 const workerScope =
   /** @type {ServiceWorkerGlobalScope} */ (
