@@ -78,6 +78,10 @@ a {
   min-height: 100vh;
 }
 
+.app-shell:not(.has-items) main {
+  padding-bottom: 0;
+}
+
 main {
   width: min(calc(100% - 48px), var(--content));
   margin-inline: auto;
@@ -93,6 +97,15 @@ section {
   padding-bottom: 32px;
 }
 
+.import-section:not(.has-items) {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding-block: clamp(48px, 8vh, 96px);
+}
+
 .editor-section {
   margin-top: 8px;
   border-top: 1px solid var(--line);
@@ -101,27 +114,27 @@ section {
 .hero {
   max-width: 520px;
   margin-bottom: 24px;
+  text-align: center;
 }
 
 .content-brand {
   display: inline-flex;
   align-items: center;
   gap: 10px;
-  margin-bottom: 16px;
-  color: var(--muted);
-  font-size: 14px;
-  font-weight: 600;
+  color: var(--text);
+  font-size: 17px;
+  font-weight: 650;
   letter-spacing: -0.01em;
 }
 
 .content-brand:hover {
-  color: var(--text);
+  color: var(--muted);
 }
 
 .brand-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
+  width: 32px;
+  height: 32px;
+  border-radius: 7px;
 }
 
 .section-heading {
@@ -152,26 +165,19 @@ h2 {
   font-size: clamp(20px, 2.4vw, 26px);
 }
 
-.hero > p {
-  max-width: 520px;
-  margin: 0;
-  color: var(--muted);
-  font-size: 14px;
-  line-height: 1.7;
-}
-
 .drop-zone {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  width: min(100%, 340px);
-  aspect-ratio: 1 / 0.92;
-  padding: 32px;
+  gap: 20px;
+  width: min(100%, 420px);
+  aspect-ratio: 3 / 2;
+  padding: 32px 36px;
   border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  background: transparent;
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 3%);
   text-align: center;
   cursor: pointer;
   transition:
@@ -181,8 +187,8 @@ h2 {
 
 .drop-zone:hover,
 .drop-zone.is-dragging {
-  border-color: var(--muted);
-  background: var(--accent-surface);
+  border-color: #5a5a63;
+  background: var(--surface-raised);
 }
 
 .drop-zone.is-disabled {
@@ -191,9 +197,14 @@ h2 {
 }
 
 .drop-zone > svg {
-  width: 28px;
-  height: 28px;
-  color: var(--muted);
+  box-sizing: content-box;
+  width: 24px;
+  height: 24px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface-raised);
+  color: var(--text);
 }
 
 .drop-zone.is-dragging > svg {
@@ -206,24 +217,25 @@ h2 {
 }
 
 .drop-zone strong {
-  margin-bottom: 6px;
-  font-size: 14px;
-  font-weight: 570;
+  margin-bottom: 7px;
+  font-size: 16px;
+  font-weight: 620;
 }
 
 .drop-zone div span {
   max-width: 240px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.6;
 }
 
-.drop-action {
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text);
+.import-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin: 16px 0 0;
+  color: var(--subtle);
   font-size: 12px;
 }
 
@@ -1240,6 +1252,11 @@ input[type="range"]::-moz-range-thumb {
     padding-bottom: 24px;
   }
 
+  .import-section:not(.has-items) {
+    min-height: 100svh;
+    padding-block: 32px;
+  }
+
   .editor-section {
     padding-top: 36px;
     padding-bottom: 32px;
@@ -1258,13 +1275,17 @@ input[type="range"]::-moz-range-thumb {
 
   .drop-zone {
     width: 100%;
-    max-width: 340px;
-    min-height: 0;
-    padding: 26px 22px;
+    max-width: 420px;
+    padding: 24px;
   }
 
   .drop-zone > svg {
     margin: 0;
+  }
+
+  .import-note {
+    max-width: 280px;
+    text-align: center;
   }
 
   .queue-item {

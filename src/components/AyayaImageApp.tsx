@@ -629,9 +629,15 @@ export default function AyayaImageApp() {
   } as CSSProperties;
 
   return (
-    <div className="app-shell" data-testid="ayayaimage-app">
+    <div
+      className={`app-shell${items.length > 0 ? " has-items" : ""}`}
+      data-testid="ayayaimage-app"
+    >
       <main>
-        <section className="import-section" aria-label="图片导入">
+        <section
+          className={`import-section${items.length > 0 ? " has-items" : ""}`}
+          aria-label="图片导入"
+        >
           <div className="hero">
             <a className="content-brand" href="./" aria-label="AyayaImage 首页">
               <img
@@ -643,9 +649,6 @@ export default function AyayaImageApp() {
               />
               <span>AyayaImage</span>
             </a>
-            <p>
-              调整尺寸、转换格式、压缩和批量命名。所有处理都在当前设备完成。
-            </p>
           </div>
 
           <div
@@ -656,6 +659,7 @@ export default function AyayaImageApp() {
             role="button"
             tabIndex={0}
             aria-label="选择或拖入图片"
+            aria-describedby="import-note"
             aria-disabled={isBusy}
             onClick={() => {
               if (!isBusy) fileInputRef.current?.click();
@@ -685,13 +689,15 @@ export default function AyayaImageApp() {
             />
             <Upload aria-hidden="true" size={20} />
             <div>
-              <strong>{isImporting ? "正在读取…" : "选择图片"}</strong>
-              <span>
-                拖入、点击选择或 ⌘V 粘贴，最多 {MAX_QUEUE_LENGTH} 张
-              </span>
+              <strong>{isImporting ? "正在读取…" : "拖入图片"}</strong>
+              <span>或点击选择 · ⌘V 粘贴</span>
             </div>
-            <span className="drop-action">浏览</span>
           </div>
+
+          <p className="import-note" id="import-note">
+            <LockKeyhole aria-hidden="true" size={12} />
+            JPEG · PNG · WebP · 最多 {MAX_QUEUE_LENGTH} 张 · 本地处理
+          </p>
 
           <p className="sr-announcement" aria-live="polite">
             {queueMessage}
