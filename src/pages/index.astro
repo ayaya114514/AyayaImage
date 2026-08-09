@@ -5,7 +5,7 @@ const base = import.meta.env.BASE_URL;
 const canonical = Astro.site ? new URL(base, Astro.site) : Astro.url;
 const ogImage = new URL(`${base}og-v3.png`, Astro.site ?? Astro.url);
 const isProduction = import.meta.env.PROD;
-const title = 'AyayaImage — 本地批量图片预处理';
+const title = 'AyayaImage';
 const description =
   '面向证件照、头像和日常压缩的本地图片预处理工具。批量调整尺寸、转换格式、压缩与打包，图片不会离开浏览器。';
 ---
