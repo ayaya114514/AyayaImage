@@ -6,7 +6,6 @@ import {
   Download,
   LoaderCircle,
   Plus,
-  Save,
   SlidersHorizontal,
   Trash2,
   Upload,
@@ -26,16 +25,12 @@ import {
 
 import {
   ImageWorkerClient,
+  buildOutputName,
   createDrawPlan,
   inspectInputMetadata,
   PRESETS,
   deduplicateOutputName,
-  deleteCustomPreset as deleteStoredPreset,
-  extensionForMimeType,
-  listCustomPresets,
-  saveCustomPreset as persistCustomPreset,
   verifyOutputMetadata,
-  type CustomImagePreset,
   type InputMetadataSummary,
   type OutputMetadataVerification,
   type ProcessOptions,
@@ -47,7 +42,6 @@ import "../styles/app.css";
 
 type QueueStatus = "ready" | "processing" | "done" | "error";
 type CompressionMode = "quality" | "target-size" | "auto";
-type NamingMode = "original" | "pattern";
 
 type QueueItem = {
   id: string;
@@ -72,15 +66,6 @@ const MOBILE_PIXEL_WARNING = 20_000_000;
 const DESKTOP_PIXEL_LIMIT = 100_000_000;
 const MOBILE_PIXEL_LIMIT = 40_000_000;
 const ZIP_MEMORY_WARNING = 250 * 1024 * 1024;
-
-const PRESET_LABELS: Record<string, string> = {
-  "blog-body": "博客正文",
-  "blog-thumbnail": "博客缩略图",
-  "open-graph": "Open Graph",
-  "github-readme": "GitHub README",
-  avatar: "Avatar",
-  original: "Original",
-};
 
 const FORMAT_LABELS: Record<ProcessOptions["format"], string> = {
   original: "保留格式",
@@ -112,23 +97,6 @@ function formatBytes(bytes: number) {
   );
   const value = bytes / 1024 ** index;
   return `${value >= 100 || index === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[index]}`;
-}
-
-function fileStem(name: string) {
-  return name.replace(/\.[^.]+$/, "");
-}
-
-function cleanName(value: string, lowerCase: boolean, stripSpecial: boolean) {
-  let output = value.trim().replace(/\s+/g, "-");
-  if (stripSpecial) {
-    output = output
-      .normalize("NFKC")
-      .replace(/[\p{P}\p{S}]+/gu, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-|-$/g, "");
-  }
-  if (lowerCase) output = output.toLowerCase();
-  return output || "image";
 }
 
 function triggerDownload(blob: Blob, filename: string) {
@@ -172,33 +140,22 @@ export default function AyayaImageApp() {
   const [queueMessage, setQueueMessage] = useState("");
   const [isMobile, setIsMobile] = useState(false);
 
-  const [selectedPreset, setSelectedPreset] = useState("blog-body");
+  const [selectedPreset, setSelectedPreset] = useState("original");
   const [resizeMode, setResizeMode] =
-    useState<ResizeOptions["mode"]>("long-edge");
+    useState<ResizeOptions["mode"]>("original");
   const [width, setWidth] = useState(1600);
   const [height, setHeight] = useState(1200);
   const [longEdge, setLongEdge] = useState(1600);
   const [percent, setPercent] = useState(100);
   const [noUpscale, setNoUpscale] = useState(true);
   const [format, setFormat] =
-    useState<ProcessOptions["format"]>("webp");
+    useState<ProcessOptions["format"]>("original");
   const [compressionMode, setCompressionMode] =
     useState<CompressionMode>("auto");
-  const [quality, setQuality] = useState(82);
+  const [quality, setQuality] = useState(86);
   const [targetSizeKb, setTargetSizeKb] = useState(500);
 
-  const [namingMode, setNamingMode] = useState<NamingMode>("pattern");
-  const [pattern, setPattern] = useState("{name}-{index}");
-  const [prefix, setPrefix] = useState("");
-  const [suffix, setSuffix] = useState("");
-  const [lowerCase, setLowerCase] = useState(true);
-  const [stripSpecial, setStripSpecial] = useState(true);
-  const [appendDimensions, setAppendDimensions] = useState(false);
-
   const [comparePosition, setComparePosition] = useState(50);
-  const [customPresets, setCustomPresets] = useState<CustomImagePreset[]>([]);
-  const [customPresetName, setCustomPresetName] = useState("");
-  const [presetSaved, setPresetSaved] = useState(false);
 
   const [zipBusy, setZipBusy] = useState(false);
   const isBusy = isImporting || isProcessing || zipBusy;
@@ -222,6 +179,7 @@ export default function AyayaImageApp() {
   const hasPng = items.some((item) => item.file.type === "image/png");
   const targetIncludesPng =
     format === "png" || (format === "original" && hasPng);
+  const isIdPhotoPreset = selectedPreset.startsWith("id-photo-");
   const formatRecommendation = activeItem
     ? activeItem.file.type === "image/png"
       ? "PNG 输入：截图或透明内容优先 WebP；需要无损时保留 PNG"
@@ -248,12 +206,6 @@ export default function AyayaImageApp() {
     update();
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
-  }, []);
-
-  useEffect(() => {
-    listCustomPresets()
-      .then(setCustomPresets)
-      .catch(() => setQueueMessage("自定义 preset 暂时无法读取"));
   }, []);
 
   useEffect(() => {
@@ -407,9 +359,7 @@ export default function AyayaImageApp() {
   };
 
   const applyPreset = (id: string) => {
-    const preset =
-      PRESETS.find((candidate) => candidate.id === id) ??
-      customPresets.find((candidate) => candidate.id === id);
+    const preset = PRESETS.find((candidate) => candidate.id === id);
     if (!preset) return;
     setSelectedPreset(id);
     setResizeFromPreset(preset.resize);
@@ -467,25 +417,6 @@ export default function AyayaImageApp() {
     };
   };
 
-  const makeOutputName = (
-    item: QueueItem,
-    result: ProcessedImage,
-    index: number,
-  ) => {
-    const originalStem = fileStem(item.file.name);
-    let base =
-      namingMode === "original"
-        ? originalStem
-        : pattern
-            .replaceAll("{name}", originalStem)
-            .replaceAll("{index}", String(index + 1).padStart(2, "0"))
-            .replaceAll("{width}", String(result.width))
-            .replaceAll("{height}", String(result.height));
-    base = cleanName(`${prefix}${base}${suffix}`, lowerCase, stripSpecial);
-    if (appendDimensions) base += `-${result.width}x${result.height}`;
-    return `${base}.${extensionForMimeType(result.mimeType)}`;
-  };
-
   const processQueue = async () => {
     if (!items.length || operationLockRef.current) return;
     const options = getProcessOptions();
@@ -514,7 +445,7 @@ export default function AyayaImageApp() {
     const usedOutputNames = new Set<string>();
 
     try {
-      for (const [index, item] of items.entries()) {
+      for (const item of items) {
         releaseObjectUrl(item.resultUrl);
         updateItem(item.id, {
           status: "processing",
@@ -532,7 +463,7 @@ export default function AyayaImageApp() {
           ).catch(() => undefined);
           const resultUrl = makeObjectUrl(result.blob);
           const outputName = deduplicateOutputName(
-            makeOutputName(item, result, index),
+            buildOutputName(item.file.name, result.mimeType),
             usedOutputNames,
           );
           updateItem(item.id, {
@@ -562,37 +493,6 @@ export default function AyayaImageApp() {
         ? `处理完成，${failedCount} 张失败`
         : "处理完成，文件仍只存在于当前浏览器",
     );
-  };
-
-  const saveCurrentPreset = async () => {
-    const label = customPresetName.trim();
-    if (!label) return;
-    try {
-      const saved = await persistCustomPreset({
-        label,
-        description: "自定义输出设置",
-        resize: getResizeOptions(),
-        suggestedFormat: format,
-        suggestedQuality: quality / 100,
-      });
-      setCustomPresets((current) => [...current, saved]);
-      setCustomPresetName("");
-      setPresetSaved(true);
-      window.setTimeout(() => setPresetSaved(false), 1_500);
-    } catch {
-      setQueueMessage("Preset 未能保存到此设备");
-    }
-  };
-
-  const deleteCustomPreset = async (id: string) => {
-    const next = customPresets.filter((preset) => preset.id !== id);
-    setCustomPresets(next);
-    if (selectedPreset === id) setSelectedPreset("");
-    try {
-      await deleteStoredPreset(id);
-    } catch {
-      setQueueMessage("无法更新本地 preset");
-    }
   };
 
   const downloadZip = async (
@@ -666,16 +566,21 @@ export default function AyayaImageApp() {
 
           {items.length === 0 ? (
             <div className="empty-state">
-              <div className="content-brand">
-                <img
-                  className="brand-icon"
-                  src={`${import.meta.env.BASE_URL}icons/favicon-64.png`}
-                  width="28"
-                  height="28"
-                  alt=""
-                />
-                <span>AyayaImage</span>
-              </div>
+              <header className="empty-intro">
+                <h1 className="content-brand">
+                  <img
+                    className="brand-icon"
+                    src={`${import.meta.env.BASE_URL}icons/favicon-64.png`}
+                    width="36"
+                    height="36"
+                    alt=""
+                  />
+                  <span>AyayaImage</span>
+                </h1>
+                <p className="project-description">
+                  本地批量压缩、转换与整理图片，文件无需上传。
+                </p>
+              </header>
 
               <div
                 ref={emptyPickerRef}
@@ -805,34 +710,25 @@ export default function AyayaImageApp() {
           >
             <div className="quick-controls">
                   <label className="field">
-                    <span>用途</span>
+                    <span>常用尺寸</span>
                     <select
                       value={selectedPreset}
                       disabled={isBusy}
                       onChange={(event) => applyPreset(event.target.value)}
                     >
                       <option value="" disabled>
-                        自定义设置
+                        手动设置
                       </option>
                       {PRESETS.map((preset) => (
                         <option key={preset.id} value={preset.id}>
-                          {PRESET_LABELS[preset.id] ?? preset.label}
+                          {preset.label}
                         </option>
                       ))}
-                      {customPresets.length > 0 && (
-                        <optgroup label="自定义">
-                          {customPresets.map((preset) => (
-                            <option key={preset.id} value={preset.id}>
-                              {preset.label}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
                     </select>
                   </label>
 
                   <label className="field">
-                    <span>尺寸</span>
+                    <span>调整方式</span>
                     <select
                       value={resizeMode}
                       disabled={isBusy}
@@ -1055,172 +951,12 @@ export default function AyayaImageApp() {
                     </p>
                   )}
 
-                <details className="advanced-settings">
-                  <summary>
-                    <span>更多设置</span>
-                    <small>命名与 preset</small>
-                  </summary>
-                  <div className="advanced-settings-content">
-                    <div className="naming-settings">
-                      <label className="field">
-                        <span>命名方式</span>
-                        <select
-                          value={namingMode}
-                          disabled={isBusy}
-                          onChange={(event) =>
-                            setNamingMode(event.target.value as NamingMode)
-                          }
-                        >
-                          <option value="original">原文件名</option>
-                          <option value="pattern">命名规则</option>
-                        </select>
-                      </label>
-
-                      {namingMode === "pattern" && (
-                        <label className="field">
-                          <span>
-                            规则
-                            <small>
-                              {"{name} {index} {width} {height}"}
-                            </small>
-                          </span>
-                          <input
-                            type="text"
-                            value={pattern}
-                            disabled={isBusy}
-                            onChange={(event) => setPattern(event.target.value)}
-                            spellCheck={false}
-                          />
-                        </label>
-                      )}
-
-                      <div className="inline-fields">
-                        <label className="field">
-                          <span>Prefix</span>
-                          <input
-                            type="text"
-                            value={prefix}
-                            disabled={isBusy}
-                            onChange={(event) => setPrefix(event.target.value)}
-                          />
-                        </label>
-                        <label className="field">
-                          <span>Suffix</span>
-                          <input
-                            type="text"
-                            value={suffix}
-                            disabled={isBusy}
-                            onChange={(event) => setSuffix(event.target.value)}
-                          />
-                        </label>
-                      </div>
-
-                      <div className="check-row">
-                        <label className="check-field">
-                          <input
-                            type="checkbox"
-                            checked={lowerCase}
-                            disabled={isBusy}
-                            onChange={(event) =>
-                              setLowerCase(event.target.checked)
-                            }
-                          />
-                          <span className="check-box" aria-hidden="true">
-                            <Check size={11} />
-                          </span>
-                          小写
-                        </label>
-                        <label className="check-field">
-                          <input
-                            type="checkbox"
-                            checked={stripSpecial}
-                            disabled={isBusy}
-                            onChange={(event) =>
-                              setStripSpecial(event.target.checked)
-                            }
-                          />
-                          <span className="check-box" aria-hidden="true">
-                            <Check size={11} />
-                          </span>
-                          清理标点
-                        </label>
-                        <label className="check-field">
-                          <input
-                            type="checkbox"
-                            checked={appendDimensions}
-                            disabled={isBusy}
-                            onChange={(event) =>
-                              setAppendDimensions(event.target.checked)
-                            }
-                          />
-                          <span className="check-box" aria-hidden="true">
-                            <Check size={11} />
-                          </span>
-                          添加尺寸
-                        </label>
-                      </div>
-                    </div>
-
-                    <div className="save-preset">
-                      <p className="save-preset-label">
-                        保存当前设置
-                      </p>
-                      <div>
-                        <label className="field">
-                          <span>Preset 名称</span>
-                          <input
-                            type="text"
-                            value={customPresetName}
-                            disabled={isBusy}
-                            placeholder="例如：博客横图"
-                            onChange={(event) =>
-                              setCustomPresetName(event.target.value)
-                            }
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") {
-                                event.preventDefault();
-                                void saveCurrentPreset();
-                              }
-                            }}
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          className="secondary-button"
-                          onClick={() => void saveCurrentPreset()}
-                          disabled={!customPresetName.trim() || isBusy}
-                        >
-                          {presetSaved ? (
-                            <CheckCircle2 aria-hidden="true" size={15} />
-                          ) : (
-                            <Save aria-hidden="true" size={15} />
-                          )}
-                          {presetSaved ? "已保存" : "保存"}
-                        </button>
-                      </div>
-                    </div>
-
-                    {customPresets.length > 0 && (
-                      <div className="saved-presets">
-                        <span>已保存</span>
-                        <div>
-                          {customPresets.map((preset) => (
-                            <button
-                              key={preset.id}
-                              type="button"
-                              disabled={isBusy}
-                              onClick={() => void deleteCustomPreset(preset.id)}
-                              aria-label={`删除 preset ${preset.label}`}
-                            >
-                              {preset.label}
-                              <X aria-hidden="true" size={11} />
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </details>
+                {isIdPhotoPreset && (
+                  <p className="inline-notice">
+                    <AlertTriangle aria-hidden="true" size={14} />
+                    仅按像素居中裁剪；背景、头部位置及提交规范请自行核对。
+                  </p>
+                )}
 
                 {(hasLargeImage ||
                   totalInputSize > ZIP_MEMORY_WARNING) && (

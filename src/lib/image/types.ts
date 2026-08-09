@@ -98,12 +98,6 @@ export interface ImagePreset {
   builtIn?: boolean;
 }
 
-export interface CustomImagePreset extends ImagePreset {
-  builtIn?: false;
-  createdAt: number;
-  updatedAt: number;
-}
-
 export interface SourceDimensions {
   width: number;
   height: number;

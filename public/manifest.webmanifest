@@ -2,7 +2,7 @@
   "id": ".",
   "name": "AyayaImage",
   "short_name": "AyayaImage",
-  "description": "面向博客、GitHub README 和社交媒体的本地批量图片预处理工具。",
+  "description": "面向证件照、头像和日常压缩的本地批量图片预处理工具。",
   "lang": "zh-CN",
   "dir": "ltr",
   "start_url": ".",

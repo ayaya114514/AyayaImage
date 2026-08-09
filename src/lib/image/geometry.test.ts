@@ -40,6 +40,30 @@ describe('createDrawPlan', () => {
     });
   });
 
+  it('upscales when an exact photo size requires it', () => {
+    expect(createDrawPlan(
+      { width: 200, height: 280 },
+      { mode: 'fixed', width: 295, height: 413, noUpscale: false },
+    )).toMatchObject({
+      outputWidth: 295,
+      outputHeight: 413,
+      sourceX: 0,
+      sourceY: 0,
+      sourceWidth: 200,
+      sourceHeight: 280,
+    });
+  });
+
+  it('keeps a small fixed-size source smaller when upscaling is disabled', () => {
+    expect(createDrawPlan(
+      { width: 200, height: 280 },
+      { mode: 'fixed', width: 295, height: 413, noUpscale: true },
+    )).toMatchObject({
+      outputWidth: 200,
+      outputHeight: 280,
+    });
+  });
+
   it('accepts a fractional percentage', () => {
     expect(createDrawPlan(
       { width: 800, height: 600 },

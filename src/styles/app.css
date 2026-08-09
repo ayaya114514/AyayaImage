@@ -103,7 +103,15 @@ main {
   min-height: 100svh;
   place-content: center;
   justify-items: center;
-  gap: 24px;
+  gap: 32px;
+  padding: 48px 24px;
+}
+
+.empty-intro {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  text-align: center;
 }
 
 .content-brand {
@@ -116,23 +124,44 @@ main {
   letter-spacing: -0.01em;
 }
 
+.empty-state .content-brand {
+  gap: 12px;
+  margin: 0;
+  font-size: 20px;
+  font-weight: 640;
+}
+
 .brand-icon {
   width: 28px;
   height: 28px;
   border-radius: 6px;
 }
 
+.empty-state .brand-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+}
+
+.project-description {
+  max-width: 480px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
 .drop-zone {
   display: flex;
-  width: 220px;
-  height: 220px;
+  width: min(420px, calc(100vw - 48px));
+  height: 300px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14px;
-  padding: 24px;
+  gap: 18px;
+  padding: 32px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: 12px;
   background: transparent;
   color: var(--muted);
   text-align: center;
@@ -155,12 +184,12 @@ main {
 }
 
 .drop-zone > svg {
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
 }
 
 .drop-zone strong {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 560;
 }
 
@@ -367,7 +396,6 @@ main {
   font-size: 11px;
 }
 
-input[type="text"],
 input[type="number"],
 select {
   width: 100%;
@@ -386,14 +414,9 @@ select {
   color-scheme: dark;
 }
 
-input[type="text"]:focus,
 input[type="number"]:focus,
 select:focus {
   border-color: var(--muted);
-}
-
-input::placeholder {
-  color: #55555a;
 }
 
 input[type="number"] {
@@ -434,12 +457,6 @@ input[type="number"]::-webkit-outer-spin-button {
   grid-column: 1 / -1;
 }
 
-.inline-fields {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
 .check-field {
   position: relative;
   display: inline-flex;
@@ -475,12 +492,6 @@ input[type="number"]::-webkit-outer-spin-button {
 .check-field input:focus-visible + .check-box {
   outline: 2px solid var(--text);
   outline-offset: 2px;
-}
-
-.check-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 18px;
 }
 
 .range-field {
@@ -559,92 +570,6 @@ input[type="range"]::-moz-range-thumb {
 .error-message svg {
   flex: 0 0 auto;
   margin-top: 1px;
-}
-
-.advanced-settings {
-  margin-top: 18px;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-}
-
-.advanced-settings > summary {
-  display: flex;
-  min-height: 44px;
-  align-items: center;
-  justify-content: space-between;
-  color: var(--muted);
-  font-size: 11px;
-  list-style: none;
-  cursor: pointer;
-}
-
-.advanced-settings > summary::-webkit-details-marker {
-  display: none;
-}
-
-.advanced-settings > summary small {
-  color: var(--subtle);
-  font-size: 11px;
-}
-
-.advanced-settings[open] > summary {
-  color: var(--text);
-}
-
-.advanced-settings-content {
-  display: grid;
-  gap: 20px;
-  padding: 4px 0 20px;
-}
-
-.naming-settings {
-  display: grid;
-  gap: 14px;
-}
-
-.save-preset {
-  padding-top: 18px;
-  border-top: 1px solid var(--line);
-}
-
-.save-preset-label {
-  margin-bottom: 12px;
-  color: var(--muted);
-  font-size: 11px;
-}
-
-.save-preset > div {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 8px;
-  align-items: end;
-}
-
-.saved-presets {
-  display: grid;
-  gap: 8px;
-  color: var(--subtle);
-  font-size: 11px;
-}
-
-.saved-presets > div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-}
-
-.saved-presets button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0;
-  color: var(--muted);
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.saved-presets button:hover {
-  color: var(--danger);
 }
 
 .warning-stack {
@@ -929,12 +854,29 @@ input[type="range"]::-moz-range-thumb {
   }
 
   .empty-state {
-    gap: 20px;
+    gap: 28px;
+    padding: 32px 20px;
+  }
+
+  .empty-state .content-brand {
+    gap: 10px;
+    font-size: 18px;
+  }
+
+  .empty-state .brand-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 7px;
+  }
+
+  .project-description {
+    max-width: 320px;
+    font-size: 13px;
   }
 
   .drop-zone {
-    width: 200px;
-    height: 200px;
+    width: min(320px, calc(100vw - 40px));
+    height: 240px;
   }
 
   .import-section {
@@ -1016,9 +958,6 @@ input[type="range"]::-moz-range-thumb {
     width: 100%;
   }
 
-  .save-preset > div {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {

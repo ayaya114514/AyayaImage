@@ -24,7 +24,6 @@ export {
 export {
   buildOutputName,
   deduplicateOutputName,
-  type NamingOptions,
 } from './naming';
 export {
   inspectInputMetadata,
@@ -36,7 +35,6 @@ export {
 export {
   SUPPORTED_MIME_TYPES,
   type CompressionOptions,
-  type CustomImagePreset,
   type DrawPlan,
   type ImagePreset,
   type OutputFormat,
