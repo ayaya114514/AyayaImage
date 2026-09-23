@@ -22,12 +22,6 @@ export interface ImageWorkerClientOptions {
   forceMainThread?: boolean;
 }
 
-export interface SequentialProgress {
-  completed: number;
-  total: number;
-  current: ProcessedImage;
-}
-
 function createRequestId(): string {
   if (
     typeof crypto !== 'undefined'
@@ -104,7 +98,7 @@ export class ImageWorkerClient {
     this.worker = null;
 
     for (const request of this.pending.values()) {
-      request.reject(new Error('The image worker was terminated.'));
+      request.reject(new Error('图片处理 worker 已停止'));
     }
     this.pending.clear();
   }
@@ -143,34 +137,4 @@ export class ImageWorkerClient {
     this.worker?.terminate();
     this.worker = null;
   };
-}
-
-export async function processImagesSequentially(
-  files: readonly Blob[],
-  options:
-    | ProcessOptions
-    | ((file: Blob, index: number) => ProcessOptions),
-  onProgress?: (progress: SequentialProgress) => void,
-): Promise<ProcessedImage[]> {
-  const client = new ImageWorkerClient();
-  const results: ProcessedImage[] = [];
-
-  try {
-    for (const [index, file] of files.entries()) {
-      const resolvedOptions = typeof options === 'function'
-        ? options(file, index)
-        : options;
-      const current = await client.process(file, resolvedOptions);
-      results.push(current);
-      onProgress?.({
-        completed: index + 1,
-        total: files.length,
-        current,
-      });
-    }
-  } finally {
-    client.terminate();
-  }
-
-  return results;
 }

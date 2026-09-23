@@ -25,8 +25,10 @@ import {
 
 import {
   ImageWorkerClient,
+  SUPPORTED_MIME_TYPES,
   buildOutputName,
   createDrawPlan,
+  getPreset,
   inspectInputMetadata,
   PRESETS,
   deduplicateOutputName,
@@ -37,6 +39,7 @@ import {
   type ProcessedImage,
   type ProcessWarningCode,
   type ResizeOptions,
+  type SupportedMimeType,
 } from "../lib";
 import "../styles/app.css";
 
@@ -59,12 +62,20 @@ type QueueItem = {
   cropApplied?: boolean;
 };
 
-const ACCEPTED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const ACCEPTED_TYPES: ReadonlySet<string> = new Set(SUPPORTED_MIME_TYPES);
+const EXTENSION_TYPES: Record<string, SupportedMimeType> = {
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  png: "image/png",
+  webp: "image/webp",
+};
 const MAX_QUEUE_LENGTH = 30;
 const DESKTOP_PIXEL_WARNING = 40_000_000;
 const MOBILE_PIXEL_WARNING = 20_000_000;
 const DESKTOP_PIXEL_LIMIT = 100_000_000;
 const MOBILE_PIXEL_LIMIT = 40_000_000;
+// iOS Safari refuses canvases larger than 4096 × 4096 pixels in area.
+const IOS_CANVAS_PIXEL_LIMIT = 16_777_216;
 const ZIP_MEMORY_WARNING = 250 * 1024 * 1024;
 
 const FORMAT_LABELS: Record<ProcessOptions["format"], string> = {
@@ -78,14 +89,54 @@ const WARNING_LABELS: Record<ProcessWarningCode, string> = {
   PNG_QUALITY_UNSUPPORTED: "PNG 为 lossless，quality 设置不会精确生效",
   PNG_TARGET_SIZE_UNSUPPORTED: "PNG 无法通过 quality 精确命中目标体积",
   TARGET_SIZE_UNREACHABLE: "最低 quality 仍高于目标体积",
-  TARGET_SIZE_ABOVE_SOURCE: "目标体积高于原文件，本次优先保留质量",
+  TARGET_SIZE_ABOVE_SOURCE: "目标体积高于原文件，已按不超过原文件处理",
   TRANSPARENCY_FLATTENED: "透明区域已在白色背景上合成",
   FORMAT_FALLBACK: "浏览器不支持所选 encoder，已使用兼容格式",
   INPUT_TYPE_UNSUPPORTED: "无法保留原格式，已使用 WebP",
+  SOURCE_KEPT: "重新编码不会更小，已保留原文件",
+  OUTPUT_LARGER_THAN_SOURCE: "输出比原文件大",
 };
 
 function makeId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+/**
+ * Some pickers and drag sources leave `File.type` empty or use the legacy
+ * `image/jpg`; fall back to the extension so valid images are not rejected.
+ */
+function normalizeImageFile(file: File): File | null {
+  if (ACCEPTED_TYPES.has(file.type)) return file;
+  const extension = file.name.split(".").at(-1)?.toLowerCase() ?? "";
+  const type =
+    file.type === "image/jpg"
+      ? "image/jpeg"
+      : file.type === ""
+        ? EXTENSION_TYPES[extension]
+        : undefined;
+  return type
+    ? new File([file], file.name, { type, lastModified: file.lastModified })
+    : null;
+}
+
+function isIOSDevice() {
+  return (
+    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
+}
+
+/**
+ * Returning the original bytes is only safe when they carry no privacy
+ * metadata, otherwise re-encoding is what strips it.
+ */
+function canKeepSource(metadata?: InputMetadataSummary) {
+  return (
+    metadata !== undefined &&
+    !metadata.hasMetadata &&
+    !metadata.warnings.includes("UNRECOGNIZED_CONTAINER") &&
+    !metadata.warnings.includes("CONTAINER_SCAN_FAILED")
+  );
 }
 
 function formatBytes(bytes: number) {
@@ -138,7 +189,9 @@ export default function AyayaImageApp() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [queueMessage, setQueueMessage] = useState("");
+  const [notice, setNotice] = useState("");
   const [isMobile, setIsMobile] = useState(false);
+  const [isIOS, setIsIOS] = useState(false);
 
   const [selectedPreset, setSelectedPreset] = useState("original");
   const [resizeMode, setResizeMode] =
@@ -204,6 +257,7 @@ export default function AyayaImageApp() {
     const query = window.matchMedia("(max-width: 720px)");
     const update = () => setIsMobile(query.matches);
     update();
+    setIsIOS(isIOSDevice());
     query.addEventListener("change", update);
     return () => query.removeEventListener("change", update);
   }, []);
@@ -231,16 +285,19 @@ export default function AyayaImageApp() {
       setIsImporting(true);
 
       try {
+        setNotice("");
         const incoming = Array.from(fileList);
         const availableSlots = Math.max(0, MAX_QUEUE_LENGTH - items.length);
-        const supported = incoming
-          .filter((file) => ACCEPTED_TYPES.has(file.type))
-          .slice(0, availableSlots);
-        const rejectedCount = incoming.length - supported.length;
+        const candidates = incoming
+          .map(normalizeImageFile)
+          .filter((file): file is File => file !== null);
+        const supported = candidates.slice(0, availableSlots);
+        const unsupportedCount = incoming.length - candidates.length;
+        const overLimitCount = candidates.length - supported.length;
 
         if (!supported.length) {
-          setQueueMessage(
-            availableSlots === 0
+          setNotice(
+            candidates.length > 0
               ? `一次最多处理 ${MAX_QUEUE_LENGTH} 张图片`
               : "仅支持 JPEG、PNG 与 WebP",
           );
@@ -274,11 +331,16 @@ export default function AyayaImageApp() {
 
         setItems((current) => [...current, ...nextItems]);
         setActiveId((current) => current ?? nextItems[0]?.id);
-        setQueueMessage(
-          rejectedCount > 0
-            ? `已加入 ${nextItems.length} 张；${rejectedCount} 个文件未导入`
-            : `已加入 ${nextItems.length} 张图片`,
-        );
+        setQueueMessage(`已加入 ${nextItems.length} 张图片`);
+        const unreadableCount = supported.length - nextItems.length;
+        const skipped = [
+          unsupportedCount > 0 &&
+            `${unsupportedCount} 个不是 JPEG、PNG 或 WebP`,
+          overLimitCount > 0 &&
+            `${overLimitCount} 张超出 ${MAX_QUEUE_LENGTH} 张上限`,
+          unreadableCount > 0 && `${unreadableCount} 张无法读取`,
+        ].filter(Boolean);
+        if (skipped.length) setNotice(`未导入：${skipped.join("，")}`);
       } finally {
         setIsImporting(false);
         operationLockRef.current = false;
@@ -297,10 +359,7 @@ export default function AyayaImageApp() {
       if (isBusy) return;
       const imageFiles = Array.from(event.clipboardData?.items ?? [])
         .filter(
-          (item) =>
-            item.kind === "file" &&
-            item.type.startsWith("image/") &&
-            ACCEPTED_TYPES.has(item.type),
+          (item) => item.kind === "file" && ACCEPTED_TYPES.has(item.type),
         )
         .map((item) => item.getAsFile())
         .filter((file): file is File => file !== null);
@@ -342,6 +401,7 @@ export default function AyayaImageApp() {
     });
     setItems([]);
     setActiveId(undefined);
+    setNotice("");
     setQueueMessage("队列已清空");
     window.requestAnimationFrame(() => emptyPickerRef.current?.focus());
   };
@@ -359,7 +419,7 @@ export default function AyayaImageApp() {
   };
 
   const applyPreset = (id: string) => {
-    const preset = PRESETS.find((candidate) => candidate.id === id);
+    const preset = getPreset(id);
     if (!preset) return;
     setSelectedPreset(id);
     setResizeFromPreset(preset.resize);
@@ -408,7 +468,7 @@ export default function AyayaImageApp() {
               mode: "target-size",
               maxBytes: Math.max(1, targetSizeKb) * 1024,
             }
-          : { mode: "auto", qualityHint: quality / 100 };
+          : { mode: "auto" };
     return {
       resize: getResizeOptions(),
       format,
@@ -417,12 +477,47 @@ export default function AyayaImageApp() {
     };
   };
 
+  // Results produced with older settings must not be downloaded as if they
+  // matched the current ones, so any settings change sends them back to
+  // "ready".
+  const optionsKey = JSON.stringify(getProcessOptions());
+  const lastOptionsKeyRef = useRef(optionsKey);
+  useEffect(() => {
+    if (lastOptionsKeyRef.current === optionsKey) return;
+    lastOptionsKeyRef.current = optionsKey;
+    const outdated = items.filter(
+      (item) => item.status === "done" || item.status === "error",
+    );
+    if (!outdated.length) return;
+    outdated.forEach((item) => releaseObjectUrl(item.resultUrl));
+    setItems((current) =>
+      current.map((item) =>
+        item.status === "done" || item.status === "error"
+          ? {
+              ...item,
+              status: "ready",
+              error: undefined,
+              result: undefined,
+              resultUrl: undefined,
+              outputName: undefined,
+              metadataVerification: undefined,
+              cropApplied: undefined,
+            }
+          : item,
+      ),
+    );
+    setQueueMessage("设置已更改，请重新处理");
+  }, [optionsKey]);
+
   const processQueue = async () => {
     if (!items.length || operationLockRef.current) return;
+    setNotice("");
     const options = getProcessOptions();
-    const outputPixelLimit = isMobile
-      ? MOBILE_PIXEL_LIMIT
-      : DESKTOP_PIXEL_LIMIT;
+    const outputPixelLimit = isIOS
+      ? IOS_CANVAS_PIXEL_LIMIT
+      : isMobile
+        ? MOBILE_PIXEL_LIMIT
+        : DESKTOP_PIXEL_LIMIT;
     const unsafeOutput = items.find((item) => {
       const plan = createDrawPlan(
         { width: item.width, height: item.height },
@@ -431,8 +526,12 @@ export default function AyayaImageApp() {
       return plan.outputWidth * plan.outputHeight > outputPixelLimit;
     });
     if (unsafeOutput) {
-      setQueueMessage(
-        `${unsafeOutput.file.name} 的预计输出像素过高，请降低尺寸或开启“禁止放大小图”`,
+      setNotice(
+        `${unsafeOutput.file.name} 的输出超过当前设备约 ${Math.floor(
+          outputPixelLimit / 1_000_000,
+        )} MP 的处理上限，请用“指定最长边”降低尺寸${
+          noUpscale ? "" : "或开启“禁止放大”"
+        }`,
       );
       return;
     }
@@ -457,7 +556,10 @@ export default function AyayaImageApp() {
           cropApplied: undefined,
         });
         try {
-          const result = await workerClient.process(item.file, options);
+          const result = await workerClient.process(item.file, {
+            ...options,
+            keepSourceIfSmaller: canKeepSource(item.metadata),
+          });
           const metadataVerification = await verifyOutputMetadata(
             result.blob,
           ).catch(() => undefined);
@@ -493,6 +595,7 @@ export default function AyayaImageApp() {
         ? `处理完成，${failedCount} 张失败`
         : "处理完成，文件仍只存在于当前浏览器",
     );
+    if (failedCount > 0) setNotice(`${failedCount} 张处理失败`);
   };
 
   const downloadZip = async (
@@ -502,6 +605,7 @@ export default function AyayaImageApp() {
     if (!files.length || operationLockRef.current) return;
     operationLockRef.current = true;
     setZipBusy(true);
+    setNotice("");
     try {
       const { default: JSZip } = await import("jszip");
       const zip = new JSZip();
@@ -511,6 +615,8 @@ export default function AyayaImageApp() {
         compression: "STORE",
       });
       triggerDownload(blob, filename);
+    } catch {
+      setNotice("ZIP 打包失败，可能是内存不足，请减少图片数量后重试");
     } finally {
       setZipBusy(false);
       operationLockRef.current = false;
@@ -524,6 +630,13 @@ export default function AyayaImageApp() {
       fileInputRef.current?.click();
     }
   };
+
+  const noticeElement = notice ? (
+    <p className="inline-notice is-error" role="alert">
+      <AlertTriangle aria-hidden="true" size={14} />
+      {notice}
+    </p>
+  ) : null;
 
   const previewStyle = {
     "--compare-position": `${comparePosition}%`,
@@ -558,6 +671,7 @@ export default function AyayaImageApp() {
             className="visually-hidden"
             type="file"
             tabIndex={-1}
+            aria-hidden="true"
             accept="image/jpeg,image/png,image/webp"
             multiple
             disabled={isBusy}
@@ -600,6 +714,7 @@ export default function AyayaImageApp() {
                 <Upload aria-hidden="true" size={20} />
                 <strong>{isImporting ? "正在读取…" : "选择图片"}</strong>
               </div>
+              {noticeElement}
             </div>
           ) : (
             <>
@@ -905,10 +1020,10 @@ export default function AyayaImageApp() {
                         <small>KB</small>
                       </span>
                     </label>
-                  ) : (
+                  ) : compressionMode === "quality" ? (
                     <label className="range-field">
                       <span>
-                        {compressionMode === "auto" ? "质量" : "Quality"}
+                        Quality
                         <output>{quality}%</output>
                       </span>
                       <input
@@ -924,7 +1039,7 @@ export default function AyayaImageApp() {
                         }}
                       />
                     </label>
-                  )}
+                  ) : null}
 
                   <label className="check-field">
                     <input
@@ -975,6 +1090,8 @@ export default function AyayaImageApp() {
                     )}
                   </div>
                 )}
+
+                {noticeElement}
 
                 <button
                   className="primary-button process-button"
@@ -1092,12 +1209,10 @@ export default function AyayaImageApp() {
                         {formatBytes(activeItem.file.size)}
                         <span aria-hidden="true"> → </span>
                         {formatBytes(activeItem.result.size)}
-                        {activeItem.result.savingsPercent >= 0 && (
-                          <>
-                            {" · "}
-                            节省 {activeItem.result.savingsPercent.toFixed(1)}%
-                          </>
-                        )}
+                        {" · "}
+                        {activeItem.result.savingsPercent >= 0
+                          ? `节省 ${activeItem.result.savingsPercent.toFixed(1)}%`
+                          : `增大 ${(-activeItem.result.savingsPercent).toFixed(1)}%`}
                       </dd>
                     </div>
                     <div>
@@ -1107,9 +1222,11 @@ export default function AyayaImageApp() {
                           .replace("image/", "")
                           .toUpperCase()}{" "}
                         /{" "}
-                        {activeItem.result.quality === null
-                          ? "lossless"
-                          : Math.round(activeItem.result.quality * 100)}
+                        {activeItem.result.warnings.includes("SOURCE_KEPT")
+                          ? "原文件"
+                          : activeItem.result.quality === null
+                            ? "lossless"
+                            : Math.round(activeItem.result.quality * 100)}
                       </dd>
                     </div>
                     <div>
@@ -1145,6 +1262,9 @@ export default function AyayaImageApp() {
                         <p key={warning}>
                           <AlertTriangle aria-hidden="true" size={13} />
                           {WARNING_LABELS[warning]}
+                          {warning === "OUTPUT_LARGER_THAN_SOURCE" &&
+                            activeItem.metadata?.hasMetadata &&
+                            "；原图含 metadata，为去除它未直接沿用原文件"}
                         </p>
                       ))}
                     </div>
@@ -1157,7 +1277,9 @@ export default function AyayaImageApp() {
                       download={activeItem.outputName}
                     >
                       <Download aria-hidden="true" size={16} />
-                      下载 {activeItem.outputName}
+                      <span className="button-label">
+                        下载 {activeItem.outputName}
+                      </span>
                     </a>
                     <button
                       className="secondary-button"

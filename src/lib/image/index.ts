@@ -9,14 +9,8 @@ export {
   extensionForMimeType,
 } from './processor';
 export {
-  processImage,
-  disposeSharedImageWorker,
-} from './browser-processor';
-export {
   ImageWorkerClient,
-  processImagesSequentially,
   type ImageWorkerClientOptions,
-  type SequentialProgress,
 } from './worker-client';
 export {
   createDrawPlan,

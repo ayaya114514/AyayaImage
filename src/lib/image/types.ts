@@ -60,6 +60,13 @@ export interface ProcessOptions {
    * this CSS color before encoding. Defaults to #ffffff.
    */
   backgroundColor?: string;
+  /**
+   * When the output keeps the source format and pixels unchanged, return the
+   * original bytes if re-encoding would not make the file smaller. Callers
+   * should only enable this when the source carries no privacy metadata,
+   * because the original bytes are returned untouched.
+   */
+  keepSourceIfSmaller?: boolean;
 }
 
 export type ProcessWarningCode =
@@ -69,7 +76,9 @@ export type ProcessWarningCode =
   | 'TARGET_SIZE_ABOVE_SOURCE'
   | 'TRANSPARENCY_FLATTENED'
   | 'FORMAT_FALLBACK'
-  | 'INPUT_TYPE_UNSUPPORTED';
+  | 'INPUT_TYPE_UNSUPPORTED'
+  | 'SOURCE_KEPT'
+  | 'OUTPUT_LARGER_THAN_SOURCE';
 
 export interface ProcessedImage {
   blob: Blob;
