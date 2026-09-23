@@ -55,4 +55,40 @@ describe('verifyOutputMetadata', () => {
       containerMarkers: ['text'],
     });
   });
+
+  it('detects an EXIF APP1 segment in a JPEG', async () => {
+    const payload = [...asciiBytes('Exif'), 0, 0, 0, 0];
+    const jpegWithExif = new Blob([
+      Uint8Array.from([
+        0xff, 0xd8,
+        0xff, 0xe1, 0, payload.length + 2,
+        ...payload,
+        0xff, 0xd9,
+      ]),
+    ], { type: 'image/jpeg' });
+
+    await expect(verifyOutputMetadata(jpegWithExif)).resolves.toMatchObject({
+      verified: true,
+      metadataRemoved: false,
+      containerMarkers: ['exif'],
+    });
+  });
+
+  it('detects an EXIF chunk in a WebP container', async () => {
+    const webpWithExif = new Blob([
+      Uint8Array.from([
+        ...asciiBytes('RIFF'), 24, 0, 0, 0,
+        ...asciiBytes('WEBP'),
+        ...asciiBytes('VP8 '), 0, 0, 0, 0,
+        ...asciiBytes('EXIF'), 4, 0, 0, 0,
+        0, 0, 0, 0,
+      ]),
+    ], { type: 'image/webp' });
+
+    await expect(verifyOutputMetadata(webpWithExif)).resolves.toMatchObject({
+      verified: true,
+      metadataRemoved: false,
+      containerMarkers: ['exif'],
+    });
+  });
 });

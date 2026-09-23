@@ -221,7 +221,7 @@ main {
 
 .workspace-actions > span {
   color: var(--subtle);
-  font-size: 12px;
+  font-size: 13px;
 }
 
 .text-button {
@@ -231,7 +231,7 @@ main {
   gap: 5px;
   padding: 0 4px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -318,14 +318,14 @@ main {
 }
 
 .queue-file strong {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 520;
 }
 
 .queue-file small {
   color: var(--subtle);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .queue-state {
@@ -335,7 +335,7 @@ main {
   justify-content: flex-end;
   gap: 5px;
   color: var(--subtle);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .queue-state.state-done {
@@ -381,7 +381,7 @@ main {
   min-width: 0;
   margin: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .field > span:first-child {
@@ -393,7 +393,7 @@ main {
 .field > span > small {
   color: var(--subtle);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 input[type="number"],
@@ -406,7 +406,7 @@ select {
   outline: 0;
   background: transparent;
   color: var(--text);
-  font-size: 12px;
+  font-size: 13px;
   transition: border-color 120ms ease;
 }
 
@@ -442,7 +442,7 @@ input[type="number"]::-webkit-outer-spin-button {
   right: 10px;
   color: var(--subtle);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
+  font-size: 13px;
   transform: translateY(-50%);
 }
 
@@ -464,7 +464,7 @@ input[type="number"]::-webkit-outer-spin-button {
   align-items: center;
   gap: 7px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -498,7 +498,7 @@ input[type="number"]::-webkit-outer-spin-button {
   display: grid;
   gap: 8px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .range-field > span {
@@ -557,11 +557,20 @@ input[type="range"]::-moz-range-thumb {
   align-items: flex-start;
   gap: 7px;
   color: var(--warning);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .inline-notice {
   margin: 12px 0 0;
+}
+
+.inline-notice.is-error {
+  color: var(--danger);
+}
+
+.empty-state .inline-notice {
+  justify-content: center;
+  margin: 0;
 }
 
 .inline-notice svg,
@@ -592,7 +601,7 @@ input[type="range"]::-moz-range-thumb {
   gap: 7px;
   padding: 0 13px;
   border-radius: 5px;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 560;
   white-space: nowrap;
   cursor: pointer;
@@ -747,7 +756,7 @@ input[type="range"]::-moz-range-thumb {
   gap: 16px;
   margin-top: 12px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .source-metadata span {
@@ -780,7 +789,7 @@ input[type="range"]::-moz-range-thumb {
 .result-stats dt {
   margin-bottom: 4px;
   color: var(--subtle);
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .result-stats dd {
@@ -788,7 +797,7 @@ input[type="range"]::-moz-range-thumb {
   overflow: hidden;
   color: #d4d4d6;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 11px;
+  font-size: 13px;
   text-overflow: ellipsis;
 }
 
@@ -812,7 +821,11 @@ input[type="range"]::-moz-range-thumb {
   margin-top: 18px;
 }
 
-.download-row .primary-button {
+.download-row > * {
+  min-width: 0;
+}
+
+.button-label {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

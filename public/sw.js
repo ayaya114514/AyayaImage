@@ -1,5 +1,7 @@
 const CACHE_PREFIX = 'ayayaimage-shell';
-const CACHE_VERSION = 'v5';
+// Replaced at build time with a content hash so every deploy gets a fresh
+// cache and `activate` drops the previous build's assets.
+const CACHE_VERSION = /* INJECT_VERSION */ 'dev';
 const CACHE_NAME = `${CACHE_PREFIX}-${CACHE_VERSION}`;
 const workerScope =
   /** @type {ServiceWorkerGlobalScope} */ (

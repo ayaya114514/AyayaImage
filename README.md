@@ -53,7 +53,8 @@ AyayaImage 默认逐张处理并在完成后释放临时资源，但超大图片
 
 ### 格式与目标体积
 
-- JPEG / WebP 可以用 binary search 寻找不超过目标体积的较高 `quality`，结果仍受图片内容和浏览器 encoder 影响。
+- JPEG / WebP 可以用 binary search 寻找不超过目标体积的较高 `quality`，结果仍受图片内容和浏览器 encoder 影响；目标体积高于原文件时，按不超过原文件体积处理。
+- 格式和尺寸都不变、重新编码又不会更小时，直接保留原文件；原图含 EXIF / GPS 等 metadata 时仍输出去除 metadata 的重新编码版本，并提示体积增大。
 - PNG 主要是 lossless 格式，不能像 JPEG / WebP 一样靠 `quality` 精确命中目标体积。
 - 透明图片转换为 JPEG 时需要合成背景色，不能保留 alpha channel。
 - MVP 不支持 HEIC 和 AVIF；HEIC 的浏览器解码兼容性不统一，AVIF 可在后续评估。
@@ -89,11 +90,13 @@ npm run astro -- dev logs
 npm run astro -- dev stop
 ```
 
-类型检查与 production build：
+类型检查、单元测试与 production build（`validate` 依次运行三者）：
 
 ```sh
-npm run astro -- check
+npm run check
+npm test
 npm run build
+npm run validate
 ```
 
 本地预览 production output：

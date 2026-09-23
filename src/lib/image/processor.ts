@@ -55,7 +55,7 @@ function clampQuality(value: number): number {
     return 0.82;
   }
 
-  return Math.min(0.98, Math.max(0.05, value));
+  return Math.min(1, Math.max(0.05, value));
 }
 
 function normalizeInputMimeType(type: string): SupportedMimeType | null {
@@ -111,9 +111,7 @@ function createCanvas(width: number, height: number): WorkingCanvas {
     return canvas;
   }
 
-  throw new Error(
-    'This browser cannot create a Canvas or OffscreenCanvas for image processing.',
-  );
+  throw new Error('当前浏览器无法创建 Canvas，不能处理图片');
 }
 
 function getContext(canvas: WorkingCanvas): Canvas2DLike {
@@ -122,7 +120,7 @@ function getContext(canvas: WorkingCanvas): Canvas2DLike {
     willReadFrequently: true,
   });
   if (!context) {
-    throw new Error('Unable to create a 2D canvas context.');
+    throw new Error('无法创建 Canvas 2D context，图片可能超出浏览器的尺寸上限');
   }
 
   return context as Canvas2DLike;
@@ -134,7 +132,7 @@ async function decodeWithHtmlImage(input: Blob): Promise<DecodedImage> {
     || typeof Image === 'undefined'
     || typeof URL === 'undefined'
   ) {
-    throw new Error('createImageBitmap is not available in this browser.');
+    throw new Error('当前浏览器无法解码图片');
   }
 
   const url = URL.createObjectURL(input);
@@ -157,19 +155,25 @@ async function decodeWithHtmlImage(input: Blob): Promise<DecodedImage> {
 }
 
 async function decodeImage(input: Blob): Promise<DecodedImage> {
-  if (typeof createImageBitmap !== 'undefined') {
-    const bitmap = await createImageBitmap(input, {
-      imageOrientation: 'from-image',
-    });
-    return {
-      source: bitmap,
-      width: bitmap.width,
-      height: bitmap.height,
-      close: () => bitmap.close(),
-    };
-  }
+  try {
+    if (typeof createImageBitmap !== 'undefined') {
+      const bitmap = await createImageBitmap(input, {
+        imageOrientation: 'from-image',
+      });
+      return {
+        source: bitmap,
+        width: bitmap.width,
+        height: bitmap.height,
+        close: () => bitmap.close(),
+      };
+    }
 
-  return decodeWithHtmlImage(input);
+    return await decodeWithHtmlImage(input);
+  } catch {
+    // Browser decode errors are terse English DOMExceptions; the UI needs a
+    // message users can act on.
+    throw new Error('无法解码图片，文件可能已损坏、过大或格式不受支持');
+  }
 }
 
 function canvasToBlob(
@@ -190,7 +194,7 @@ function canvasToBlob(
         if (blob) {
           resolve(blob);
         } else {
-          reject(new Error(`The browser could not encode ${mimeType}.`));
+          reject(new Error(`浏览器无法编码 ${mimeType}`));
         }
       },
       mimeType,
@@ -323,8 +327,20 @@ async function encodeCanvas(
   }
 
   if (compression.mode === 'target-size') {
-    if (compression.maxBytes >= sourceSize) {
+    if (sourceSize > 0 && compression.maxBytes >= sourceSize) {
+      // The source already fits the budget, so spending the whole budget on
+      // quality would only make the file larger. Aim for "not larger than the
+      // source" first and fall back to the requested budget if unreachable.
       warnings.push('TARGET_SIZE_ABOVE_SOURCE');
+      const capped = await encodeToTargetSize(
+        canvas,
+        mimeType,
+        { ...compression, maxBytes: sourceSize },
+        [],
+      );
+      if (capped.blob.size <= sourceSize) {
+        return capped;
+      }
     }
     return encodeToTargetSize(canvas, mimeType, compression, warnings);
   }
@@ -431,14 +447,32 @@ export async function processImage(
       }
     }
 
-    const savedBytes = input.size - encoded.blob.size;
+    const pixelsUnchanged = drawPlan.sourceX === 0
+      && drawPlan.sourceY === 0
+      && drawPlan.sourceWidth === decoded.width
+      && drawPlan.sourceHeight === decoded.height
+      && drawPlan.outputWidth === decoded.width
+      && drawPlan.outputHeight === decoded.height;
+    const keepSource = options.keepSourceIfSmaller === true
+      && pixelsUnchanged
+      && normalizeInputMimeType(input.type) === actualMimeType
+      && encoded.blob.size >= input.size;
+    if (keepSource) {
+      warnings.push('SOURCE_KEPT');
+    }
+    const outputBlob = keepSource ? input : encoded.blob;
+    if (outputBlob.size > input.size) {
+      warnings.push('OUTPUT_LARGER_THAN_SOURCE');
+    }
+
+    const savedBytes = input.size - outputBlob.size;
     return {
-      blob: encoded.blob,
+      blob: outputBlob,
       width: drawPlan.outputWidth,
       height: drawPlan.outputHeight,
-      size: encoded.blob.size,
+      size: outputBlob.size,
       mimeType: actualMimeType,
-      quality: LOSSY_MIME_TYPES.has(actualMimeType)
+      quality: !keepSource && LOSSY_MIME_TYPES.has(actualMimeType)
         ? encoded.quality
         : null,
       sourceHasAlpha,
