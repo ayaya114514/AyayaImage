@@ -63,6 +63,11 @@ export class ImageWorkerClient {
     }
   }
 
+  /** False when images are processed on the main thread instead. */
+  public get usesWorker(): boolean {
+    return this.worker !== null;
+  }
+
   public process(file: Blob, options: ProcessOptions): Promise<ProcessedImage> {
     if (!this.worker) {
       return processImage(file, options);

@@ -243,6 +243,8 @@ function autoQuality(
   return 0.84;
 }
 
+const TARGET_SIZE_CLOSE_ENOUGH = 0.98;
+
 async function encodeToTargetSize(
   canvas: WorkingCanvas,
   mimeType: SupportedMimeType,
@@ -296,6 +298,11 @@ async function encodeToTargetSize(
       bestBlob = candidateBlob;
       bestQuality = candidateQuality;
       lowerBound = candidateQuality;
+      // Within 2% of the target: further halving buys too little quality to be
+      // worth another full encode.
+      if (candidateBlob.size >= compression.maxBytes * TARGET_SIZE_CLOSE_ENOUGH) {
+        break;
+      }
     } else {
       upperBound = candidateQuality;
     }

@@ -116,6 +116,18 @@ describe('processImage size guards', () => {
     expect(result.warnings).toEqual([]);
   });
 
+  it('stops searching once the output is within 2% of the target size', async () => {
+    const result = await processImage(sourceBlob(5_000), {
+      ...ORIGINAL,
+      compression: { mode: 'target-size', maxBytes: 700, maxIterations: 12 },
+    });
+
+    expect(result.size).toBeLessThanOrEqual(700);
+    expect(result.size).toBeGreaterThanOrEqual(686);
+    // lowest + highest + a few halvings, not all 12 iterations
+    expect(encodedQualities.length).toBeLessThan(2 + 12);
+  });
+
   it('warns when even the lowest quality misses the target size', async () => {
     const result = await processImage(sourceBlob(5_000), {
       ...ORIGINAL,

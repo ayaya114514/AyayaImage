@@ -28,6 +28,8 @@ import {
   SUPPORTED_MIME_TYPES,
   buildOutputName,
   createDrawPlan,
+  createOrderedCommits,
+  runInPool,
   getPreset,
   inspectInputMetadata,
   PRESETS,
@@ -50,6 +52,8 @@ type QueueItem = {
   id: string;
   file: File;
   sourceUrl: string;
+  /** Small preview for the queue list; falls back to sourceUrl. */
+  thumbUrl?: string;
   width: number;
   height: number;
   status: QueueStatus;
@@ -73,6 +77,11 @@ const MAX_QUEUE_LENGTH = 30;
 const DESKTOP_PIXEL_WARNING = 40_000_000;
 const MOBILE_PIXEL_WARNING = 20_000_000;
 const DESKTOP_PIXEL_LIMIT = 100_000_000;
+// Desktop only (phones use one lane): two photos up to ~16 MP each (source +
+// output pixels, ~256 MB of RGBA) run side by side; larger ones run alone.
+const PARALLEL_PIXEL_BUDGET = 64_000_000;
+// The queue thumbnail is 30 CSS px; 96 px covers a 3x screen.
+const THUMBNAIL_SIZE = 96;
 const MOBILE_PIXEL_LIMIT = 40_000_000;
 // iOS Safari refuses canvases larger than 4096 × 4096 pixels in area.
 const IOS_CANVAS_PIXEL_LIMIT = 16_777_216;
@@ -159,6 +168,40 @@ function triggerDownload(blob: Blob, filename: string) {
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
+
+/** Second worker only where it pays off and memory is not tight. */
+function parallelLanes(isMobile: boolean) {
+  if (isMobile) return 1;
+  return (navigator.hardwareConcurrency || 2) >= 4 ? 2 : 1;
+}
+
+/**
+ * A downscaled copy for the queue list, so a long queue does not keep every
+ * photo decoded at full size just to draw 30 px squares.
+ */
+async function makeThumbnail(file: Blob, width: number, height: number) {
+  const scale = THUMBNAIL_SIZE / Math.min(width, height);
+  if (scale >= 1 || typeof createImageBitmap === "undefined") return null;
+  const thumbWidth = Math.max(1, Math.round(width * scale));
+  const thumbHeight = Math.max(1, Math.round(height * scale));
+  try {
+    const bitmap = await createImageBitmap(file, {
+      resizeWidth: thumbWidth,
+      resizeHeight: thumbHeight,
+      resizeQuality: "medium",
+    });
+    const canvas = document.createElement("canvas");
+    canvas.width = thumbWidth;
+    canvas.height = thumbHeight;
+    canvas.getContext("2d")?.drawImage(bitmap, 0, 0, thumbWidth, thumbHeight);
+    bitmap.close();
+    return await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/webp", 0.8),
+    );
+  } catch {
+    return null;
+  }
 }
 
 function getImageDimensions(url: string) {
@@ -310,6 +353,11 @@ export default function AyayaImageApp() {
           const sourceUrl = makeObjectUrl(file);
           try {
             const dimensions = await getImageDimensions(sourceUrl);
+            const thumbnail = await makeThumbnail(
+              file,
+              dimensions.width,
+              dimensions.height,
+            );
             let metadata: InputMetadataSummary | undefined;
             try {
               metadata = await inspectInputMetadata(file);
@@ -320,6 +368,7 @@ export default function AyayaImageApp() {
               id: makeId(),
               file,
               sourceUrl,
+              thumbUrl: thumbnail ? makeObjectUrl(thumbnail) : undefined,
               ...dimensions,
               status: "ready",
               metadata,
@@ -384,6 +433,7 @@ export default function AyayaImageApp() {
     const isLastItem = items.length === 1;
     const target = items.find((item) => item.id === id);
     releaseObjectUrl(target?.sourceUrl);
+    releaseObjectUrl(target?.thumbUrl);
     releaseObjectUrl(target?.resultUrl);
     setItems((current) => current.filter((item) => item.id !== id));
     if (activeId === id) {
@@ -397,6 +447,7 @@ export default function AyayaImageApp() {
   const clearQueue = () => {
     items.forEach((item) => {
       releaseObjectUrl(item.sourceUrl);
+      releaseObjectUrl(item.thumbUrl);
       releaseObjectUrl(item.resultUrl);
     });
     setItems([]);
@@ -538,54 +589,79 @@ export default function AyayaImageApp() {
 
     operationLockRef.current = true;
     setIsProcessing(true);
-    setQueueMessage("正在本地逐张处理…");
-    const workerClient = new ImageWorkerClient();
+    setQueueMessage("正在本地处理…");
+    const firstClient = new ImageWorkerClient();
+    const lanes = firstClient.usesWorker ? parallelLanes(isMobile) : 1;
+    const workerClients = [
+      firstClient,
+      ...Array.from({ length: lanes - 1 }, () => new ImageWorkerClient()),
+    ];
     let failedCount = 0;
     const usedOutputNames = new Set<string>();
+    const reserveCommit = createOrderedCommits();
+    const pixelsOf = (item: QueueItem) => {
+      const plan = createDrawPlan(
+        { width: item.width, height: item.height },
+        options.resize,
+      );
+      return item.width * item.height + plan.outputWidth * plan.outputHeight;
+    };
 
     try {
-      for (const item of items) {
-        releaseObjectUrl(item.resultUrl);
-        updateItem(item.id, {
-          status: "processing",
-          error: undefined,
-          result: undefined,
-          resultUrl: undefined,
-          outputName: undefined,
-          metadataVerification: undefined,
-          cropApplied: undefined,
-        });
-        try {
-          const result = await workerClient.process(item.file, {
-            ...options,
-            keepSourceIfSmaller: canKeepSource(item.metadata),
-          });
-          const metadataVerification = await verifyOutputMetadata(
-            result.blob,
-          ).catch(() => undefined);
-          const resultUrl = makeObjectUrl(result.blob);
-          const outputName = deduplicateOutputName(
-            buildOutputName(item.file.name, result.mimeType),
-            usedOutputNames,
-          );
+      await runInPool(
+        items,
+        pixelsOf,
+        { concurrency: lanes, budget: PARALLEL_PIXEL_BUDGET },
+        async (item, lane) => {
+          // Results are published in queue order, so duplicate output names
+          // get the same suffixes as when images were processed one by one.
+          const commit = reserveCommit();
+          releaseObjectUrl(item.resultUrl);
           updateItem(item.id, {
-            result,
-            resultUrl,
-            outputName,
-            status: "done",
-            metadataVerification,
-            cropApplied: options.resize.mode === "fixed",
+            status: "processing",
+            error: undefined,
+            result: undefined,
+            resultUrl: undefined,
+            outputName: undefined,
+            metadataVerification: undefined,
+            cropApplied: undefined,
           });
-        } catch (error) {
-          failedCount += 1;
-          updateItem(item.id, {
-            status: "error",
-            error: error instanceof Error ? error.message : "处理失败",
-          });
-        }
-      }
+          try {
+            const result = await (workerClients[lane] ?? firstClient).process(item.file, {
+              ...options,
+              keepSourceIfSmaller: canKeepSource(item.metadata),
+            });
+            const metadataVerification = await verifyOutputMetadata(
+              result.blob,
+            ).catch(() => undefined);
+            await commit.turn();
+            const resultUrl = makeObjectUrl(result.blob);
+            const outputName = deduplicateOutputName(
+              buildOutputName(item.file.name, result.mimeType),
+              usedOutputNames,
+            );
+            updateItem(item.id, {
+              result,
+              resultUrl,
+              outputName,
+              status: "done",
+              metadataVerification,
+              cropApplied: options.resize.mode === "fixed",
+            });
+          } catch (error) {
+            await commit.turn();
+            failedCount += 1;
+            updateItem(item.id, {
+              status: "error",
+              error: error instanceof Error ? error.message : "处理失败",
+            });
+          } finally {
+            commit.done();
+          }
+        },
+      );
     } finally {
-      workerClient.terminate();
+      workerClients.forEach((client) => client.terminate());
       setIsProcessing(false);
       operationLockRef.current = false;
     }
@@ -775,7 +851,7 @@ export default function AyayaImageApp() {
                       onClick={() => setActiveId(item.id)}
                       aria-pressed={activeItem?.id === item.id}
                     >
-                      <img src={item.sourceUrl} alt="" />
+                      <img src={item.thumbUrl ?? item.sourceUrl} alt="" />
                       <span className="queue-file">
                         <strong>{item.file.name}</strong>
                         <small>

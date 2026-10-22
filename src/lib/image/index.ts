@@ -16,6 +16,11 @@ export {
   createDrawPlan,
 } from './geometry';
 export {
+  createOrderedCommits,
+  runInPool,
+  type PoolOptions,
+} from './pool';
+export {
   buildOutputName,
   deduplicateOutputName,
 } from './naming';
